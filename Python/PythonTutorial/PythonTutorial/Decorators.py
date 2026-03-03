@@ -62,7 +62,7 @@ class Student (object):
         student = cls (first_name, last_name) # Creates instance using cls, the class
         return student
 
-scott = Student.from_string ('Scott Robinson') # The meth0od can be called from an uninstantiated class object. Creates an instance object
+scott = Student.from_string ('Scott Robinson') # The meth0od can be called from an uninstantiated class object. Creates an instance object.
 print (scott.first_name)
 
 # @staticmethod Decorator
