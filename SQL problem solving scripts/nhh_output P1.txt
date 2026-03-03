@@ -1,0 +1,60 @@
+lmt nhh_output_sc to 'N10071'
+lmt half_hour to 'TOTAL'
+lmt time to 'JUN-08'
+lmt business_structure to 'TOTAL'
+lmt business_structure add children using business_structure_parentrel
+lmt bmu to 'TOTAL'
+lmt elec_product to 'TOTAL_TOTAL'
+lmt gsp_group_id to 'TOTAL'
+lmt profile_class to 'TOTAL'
+lmt elec_licence to 'TOTAL'
+
+LMT NHH_OUTPUT_VER TO NHH_OUTPUT_SC.NHH_OUTPUT_VER
+
+decimals = 10
+"lmt TIME add '06/10/2008' 
+lmt business_structure to business_structure_levelrel 'SECTOR'
+lmt business_structure add 'TOTAL'
+
+lmt bmu to 'TOTAL'
+lmt elec_product to 'TOTAL_TOTAL'
+
+blank
+row under '-' 'BASE:'
+rpr across business_structure: w 15 nhh_output_prt_topvar (nhh_output_prt_measdim 'S_SCALED_CORRECTED_NBP')
+
+blank
+row under '-' 'OVERRIDE:'
+rpr across business_structure: w 15 nhh_output_sc_n_prt_topvar (nhh_output_sc_n_prt_measdim 'OV_S_SCALED_CORRECTED_NBP')
+
+blank
+row under '-' 'VIEW:'
+rpr across business_structure: w 15 nhh_output_sc_vw_S_SCALED_CORRECTED_NBP
+
+blank
+row under '-' 'EW:'
+rpr across business_structure: w 15 energy_wholesale_prt_topvar (ENERGY_WHOLESALE_PRT_MEASDIM 'S_SCALED_CORRECTED_NBP')
+
+return
+
+rpr across business_structure: nhh_output_sc_n_prt_topvar_n10071 (nhh_output_sc_n_prt_measdim 'OV_S_SCALED_CORRECTED_NBP')
+
+return
+
+lmt NHH_OUTPUT_CHG to 1 to NHH_OUTPUT_SC.NHH_OUTPUT_CHG -1
+
+
+rpr down nhh_output_chg across business_structure: nhh_output_sc_n_nc_prt_topvar_n10069 (nhh_output_sc_n_prt_measdim 'OV_S_SCALED_CORRECTED_NBP')
+
+decimals = 2
+
+return
+
+lmt time to time_levelrel 'DAY'
+lmt half_hour to half_hour_levelrel 'BASE'
+lmt gsp_group_id to gsp_group_id_levelrel 'BASE'
+lmt elec_licence to elec_licence_levelrel 'BASE'
+lmt profile_class to profile_class_levelrel 'BASE'
+lmt business_structure to business_structure_levelrel 'SECTOR'
+
+call COPY_PARTITION_COMPOSITE ('NHH_OUTPUT_PRT_COMPOSITE' 'NHH_OUTPUT_PARTITION_TEMPLATE')

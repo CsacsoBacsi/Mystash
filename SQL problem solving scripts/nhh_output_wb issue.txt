@@ -1,0 +1,33 @@
+vrb i integer
+
+lmt time to time_levelrel 'DAY'
+lmt HALF_HOUR to half_hour_levelrel 'BASE'
+lmt GSP_GROUP_ID to gsp_group_id_levelrel 'BASE'
+lmt ELEC_LICENCE to elec_licence_levelrel 'BASE'
+lmt PROFILE_CLASS to profile_class_levelrel 'BASE'
+lmt BUSINESS_STRUCTURE to business_structure_levelrel 'SECTOR'
+    
+LMT NHH_OUTPUT_SC TO 'N10069'
+        
+LMT NHH_OUTPUT_VER TO NHH_OUTPUT_SC.NHH_OUTPUT_VER
+CALL COPY_PARTITION_COMPOSITE ('NHH_OUTPUT_PRT_COMPOSITE' 'NHH_OUTPUT_PARTITION_TEMPLATE')
+
+
+"lmt time to '04/06/2008' to '12/31/2012'
+lmt time to '04/06/2008' to '04/06/2008'
+
+i = 0
+FOR TIME
+DO
+      for NHH_OUTPUT_PRT_COMPOSITE
+      do
+          i = i + 1
+          if i eq 10
+          then return
+          if NHH_OUTPUT_SC_N_OV_S_SCALED_CORRECTED ne na
+          then do
+               shw NHH_OUTPUT_SC_N_OV_S_SCALED_CORRECTED
+          doend
+      doend
+doEND
+

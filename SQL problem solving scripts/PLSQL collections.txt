@@ -1,0 +1,104 @@
+max_date CONSTANT DATE := to_date ('31/12/2099', 'DD/MM/YYYY') ;
+test_ver CONSTANT NUMBER := 757 ;
+test_ed  CONSTANT DATE := to_date ('17/11/2007', 'DD/MM/YYYY') ;
+TYPE mpan_core_type IS TABLE OF NUMBER INDEX BY PLS_INTEGER ;
+mpan_cores mpan_core_type ;
+
+PROCEDURE test IS
+-- Procedure purely for testing 
+
+this_mpan NUMBER ;
+is_gap BOOLEAN := false ;
+cnt NUMBER ;
+j PLS_INTEGER := 0 ;
+
+CURSOR C2 IS SELECT a.mpan_core, x.day				
+             FROM vw_time_dim x,				
+                  (SELECT mpan_id as mpan_core,
+                          efsd_regi, nvl (etsd_regi, efsd_regi + 1),
+                          min (efsd_regi) over (partition by mpan_id) as min_sdate, 
+                          max (nvl (etsd_regi, efsd_regi + 1)) over (partition by mpan_id) as max_edate			 
+                   FROM hh_edf_ma98_extract a
+                   WHERE a.extract_type = 'ER'
+                   ) a				   
+              WHERE x.day between a.min_sdate and a.max_edate
+              ORDER BY a.MPAN_CORE asc ;
+
+BEGIN
+
+    sp_inc_exc_main (test_ver, test_ed) ;
+
+RETURN ;
+
+dbms_output.enable ;
+
+-- goto second_query ;
+
+-- Uses EXISTS to check if date falls within any contract period
+<<first_query>>
+    FOR c1 IN (SELECT distinct mpan_core
+               FROM (SELECT a.mpan_core, efsd_regi, my_efsd_regi
+                     FROM
+                          (SELECT mpan_id as mpan_core,
+	                              efsd_regi, efsd_regi - 1 as my_efsd_regi,
+                                  min (efsd_regi) over (partition by mpan_id) as min_sdate, 
+                                  max (nvl (etsd_regi, efsd_regi + 1)) over (partition by mpan_id) as max_edate			 
+                            FROM hh_edf_ma98_extract a
+                            WHERE a.extract_type = 'ER'
+                           ) a				   
+                      WHERE my_efsd_regi > a.min_sdate) a
+                WHERE NOT EXISTS (SELECT null FROM hh_edf_ma98_extract aa
+                                  WHERE extract_type = 'ER' 
+                                        AND aa.mpan_id = a.mpan_core
+                                        AND a.my_efsd_regi between aa.efsd_regi AND nvl (aa.etsd_regi, aa.efsd_regi + 1)))
+    LOOP
+         dbms_output.put_line (to_char (c1.mpan_core)) ;
+    END LOOP ;                                   
+
+return ; 
+
+-- Uses a cursor and "control change" to stop testing if a gap found.
+-- Since only a few MPAN has gaps in their contract periods, performance gain is lost by cursoring mechanism
+<<second_query>> 
+    this_mpan := 0 ;
+    is_gap := false ;
+    j := 1 ;
+--    mpan_cores := mpan_core_type () ;
+    FOR c2_rec IN C2 
+    LOOP
+        IF this_mpan <> c2_rec.MPAN_CORE THEN
+            IF this_mpan <> 0 AND is_gap THEN
+                -- mpan_cores.EXTEND ;
+                mpan_cores (j) := c2_rec.MPAN_CORE ;
+                j := j + 1 ;
+            END IF ;
+            this_mpan := c2_rec.MPAN_CORE ;
+            is_gap := false ;
+        ELSE
+            IF is_gap THEN
+                GOTO end_loop ;
+            END IF ;
+        END IF ;
+        SELECT COUNT (*) INTO cnt 
+        FROM hh_edf_ma98_extract aa
+        WHERE aa.extract_type = 'ER'
+              AND aa.mpan_id = this_mpan 
+              AND c2_rec.day between aa.efsd_regi 
+              AND nvl (aa.etsd_regi, aa.efsd_regi + 1) ;
+        IF cnt = 0 THEN
+            is_gap := true ;
+        END IF ;
+        <<end_loop>>
+        NULL ;
+    END LOOP ;
+
+dbms_output.put_line ('Number of MPANs satisfying criteria: ' || mpan_cores.COUNT) ;
+
+    FOR i IN 1 .. mpan_cores.COUNT
+    LOOP
+        dbms_output.put_line (to_char (mpan_cores (i))) ;
+    END LOOP ;
+
+dbms_output.put_line ('Program terminated successfully!') ; 
+
+END test ;

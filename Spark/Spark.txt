@@ -1,0 +1,36 @@
+Start Oracle VM Virtualbox
+Start the Horthonworks Sandbox HDP 3.0 image
+In the browser: localhost:1080
+
+Launch NEW TO HDP, Launch Dashboard
+Login maria_dev/maria_dev
+Start Ambari, check services. Make sure Spark2 is running
+Check in Settings: All services are running. 100%
+
+Choose Advance HDP, Quick links
+Choose Web Shell Client
+Login as root/password - Ft1
+
+Run ./d.sh
+export SPARKHOME=/usr/hdp/3.0.1.0-187/spark2                                                                                                                          
+export HADOOP_USER_NAME=hdfs                                                                                                                                          
+$SPARKHOME/bin/spark-submit /root/df.py
+
+Go to Oracle VM Virtualbox
+Right mouse click on Horthonworks Sandbox HDP 3.0 image
+Close -> Power Off
+
+Putty:
+Host: 127.0.0.1 Port: 2222 Login: root
+
+Browse/upload/download HDFS:
+Ambari -> File view
+
+SCP:
+scp -P 2222 root@127.0.0.1:/root/df.py d:/
+scp -P 2222 d:/spark.txt root@127.0.0.1:/root/
+
+HDFS sudo:
+export HADOOP_USER_NAME=hdfs
+
+-

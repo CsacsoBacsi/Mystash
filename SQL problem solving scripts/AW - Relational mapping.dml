@@ -1,0 +1,325 @@
+"-------------------------------------------------------------------------------------------------------------
+" Purpose:      To find out to which AW objects are mapped to which relational objects
+" Argument:     ReportType (integer), 1: Screen - text format, 2: Screen - CSV format
+" Call syntax:  GET_REL_MAP 1
+" Returns:      OLAP object (dim or cube), its name, hierarchy, level, attribute, measure, 
+"               schema owner, relational object (table or view), column
+"               The list is echoed to the standard output (screen) either in text format or
+"               as a comma separated list of columns
+" Prerequisite: An AW with metada objects present must be attached
+" Created by:   C10879
+" Date created: 22/09/2009
+"-------------------------------------------------------------------------------------------------------------
+arg rep_type   integer
+
+vrb _thisdim   text
+vrb _thishier  text
+vrb _thislevel text
+vrb _thisowner text
+vrb _thisobj   text
+vrb _thiscol   text
+vrb _thisattr  text
+vrb _thiscube  text
+vrb _thismeas  text
+
+trap on error noprint
+
+lmt mapgroup_dim to all
+sort mapgroup_dim a mapgroup_dim
+
+lmt all_hierarchies to all
+sort all_hierarchies a all_hierarchies
+
+lmt all_levels to all
+sort all_levels a all_levels
+
+lmt all_attributes to all
+sort all_attributes a all_attributes
+
+if rep_type eq 2
+then goto csv_form
+
+" Dimensions
+lmt all_dimensions to all
+sort all_dimensions a all_dimensions
+"lmt all_dimensions to 'BUSINESS_STRUCTURE.DIMENSION' 'SSC.DIMENSION' 'TPR.DIMENSION'
+for all_dimensions
+do
+    _thisdim = extchars (all_dimensions 1 findchars (all_dimensions '.') - 1)
+    lmt mapgroup_dim to findchars (mapgroup_dim _thisdim) gt 0 ifnone end_loop
+    lmt all_hierarchies to extchars (all_hierarchies 1 findchars (all_hierarchies '.') -1) eq _thisdim
+    sort all_hierarchies a all_hierarchies
+    lmt all_levels to extchars (all_levels 1 findchars (all_levels '.') -1) eq _thisdim
+    sort all_levels a all_levels
+    lmt all_attributes to extchars (all_attributes 1 findchars (all_attributes '.') -1) eq _thisdim
+    sort all_attributes a all_Attributes
+
+    blank
+    show joinchars ('Dimension: ' _thisdim)
+
+    for all_hierarchies
+    do
+        _thishier = extchars (all_hierarchies findchars (all_hierarchies, '.') + 1)
+        _thishier = extchars (_thishier 1 findchars (_thishier, '.') - 1)
+        if _thishier eq 'AW$NONE'
+        then continue
+        shw joinchars ('     Hierarchy: ' _thishier)
+ 
+        for all_levels
+        do
+            for mapgroup_dim
+            do
+                if dim_key_map ne NA
+                then do
+                    _thislevel = extchars (all_levels findchars (all_levels, '.') + 1)
+                    _thislevel = extchars (_thislevel 1 findchars (_thislevel, '.') - 1)
+                    if _thislevel eq 'AW$NONE'
+                    then continue
+                    shw joinchars ('          Attribute: ' 'Member')
+                    shw joinchars ('               Level: ' _thislevel)
+                    
+                    _thisowner = extchars (dim_key_map 1 findchars (dim_key_map '.') - 1)
+                    _thisobj = extchars (dim_key_map findchars (dim_key_map '.') + 1)
+                    _thisobj = extchars (_thisobj 1 findchars (_thisobj '.') - 1)                    
+                    _thiscol = extchars (dim_key_map findchars (dim_key_map '.') + 1)
+                    _thiscol = extchars (_thiscol findchars (_thiscol '.') + 1)                    
+                    shw joinchars ('                    ' 'Schema owner: ' _thisowner ' Object: ' _thisobj ' Column: ' _thiscol)
+                doend
+            doend
+        doend
+
+        for all_attributes
+        do
+            _thisattr = extchars (all_attributes findchars (all_attributes, '.') + 1)
+            _thisattr = extchars (_thisattr 1 findchars (_thisattr, '.') - 1)
+            shw joinchars ('          Attribute: ' _thisattr)
+            for all_levels
+            do
+                for mapgroup_dim
+                do
+                    if attr_data_map ne NA
+                    then do
+                        _thislevel = extchars (all_levels findchars (all_levels, '.') + 1)
+                        _thislevel = extchars (_thislevel 1 findchars (_thislevel, '.') - 1)
+                        if _thislevel eq 'AW$NONE'
+                        then continue
+                        shw joinchars ('               Level: ' _thislevel)
+                    
+                        _thisowner = extchars (attr_data_map 1 findchars (attr_data_map '.') - 1)
+                        _thisobj = extchars (attr_data_map findchars (attr_data_map '.') + 1)
+                        _thisobj = extchars (_thisobj 1 findchars (_thisobj '.') - 1)                    
+                        _thiscol = extchars (attr_data_map findchars (attr_data_map '.') + 1)
+                        _thiscol = extchars (_thiscol findchars (_thiscol '.') + 1)                    
+                        shw joinchars ('                    ' 'Schema owner: ' _thisowner ' Object: ' _thisobj ' Column: ' _thiscol)
+                    doend
+                doend
+            doend
+        doend
+    doend    
+    
+end_loop:
+doend
+
+" Cubes
+lmt all_measures to all
+sort all_measures a all_measures
+
+lmt all_levels to all
+sort all_levels a all_levels
+
+lmt all_cubes to all
+sort all_cubes a all_cubes
+for all_cubes
+do
+    _thiscube = extchars (all_cubes 1 findchars (all_cubes '.') - 1)
+    lmt mapgroup_dim to findchars (mapgroup_dim _thiscube) gt 0 ifnone end_lop2
+
+    blank
+    show joinchars ('Cube: ' _thiscube)
+
+    for all_levels
+    do
+        for mapgroup_dim
+        do
+            if meas_key_map ne NA
+            then do
+                _thislevel = extchars (all_levels findchars (all_levels, '.') + 1)
+                _thislevel = extchars (_thislevel 1 findchars (_thislevel, '.') - 1)
+                _thisdim = extchars (all_levels 1 findchars (all_levels, '.') - 1)                
+                if _thislevel eq 'AW$NONE'
+                then continue
+                shw joinchars ('     Level: ' _thislevel ', Dimension: ' _thisdim)
+                    
+                _thisowner = extchars (meas_key_map 1 findchars (meas_key_map '.') - 1)
+                _thisobj = extchars (meas_key_map findchars (meas_key_map '.') + 1)
+                _thisobj = extchars (_thisobj 1 findchars (_thisobj '.') - 1)                    
+                _thiscol = extchars (meas_key_map findchars (meas_key_map '.') + 1)
+                _thiscol = extchars (_thiscol findchars (_thiscol '.') + 1)                    
+                shw joinchars ('          ' 'Schema owner: ' _thisowner ' Object: ' _thisobj ' Column: ' _thiscol)
+            doend
+        doend
+    doend
+
+    for all_measures
+    do
+        for mapgroup_dim
+        do
+            if meas_data_map ne NA
+            then do                   
+                _thismeas = extchars (all_measures findchars (all_measures, '.') + 1)
+                _thismeas = extchars (_thismeas 1 findchars (_thismeas, '.') - 1)                
+                shw joinchars ('     Measure: ' _thismeas)
+                _thisowner = extchars (meas_data_map 1 findchars (meas_data_map '.') - 1)
+                _thisobj = extchars (meas_data_map findchars (meas_data_map '.') + 1)
+                _thisobj = extchars (_thisobj 1 findchars (_thisobj '.') - 1)                    
+                _thiscol = extchars (meas_data_map findchars (meas_data_map '.') + 1)
+                _thiscol = extchars (_thiscol findchars (_thiscol '.') + 1)                    
+                shw joinchars ('          ' 'Schema owner: ' _thisowner ' Object: ' _thisobj ' Column: ' _thiscol)
+             doend
+        doend
+    doend    
+    
+end_lop2:
+doend
+
+goto ALLDONE
+
+csv_form:
+" Dimensions
+lmt all_dimensions to all
+sort all_dimensions a all_dimensions
+lmt all_dimensions to 'BMU.DIMENSION'
+"lmt all_dimensions to 'BUSINESS_STRUCTURE.DIMENSION' 'SSC.DIMENSION' 'TPR.DIMENSION'
+shw 'OLAP_OBJ_TYPE,OLAP_NAME,OLAP_HIER,OLAP_LEVEL,OLAP_ATTR,OLAP_DIM,OLAP_MEASURE,REL_SCHEMA_OWNER,REL_OBJ,REL_OBJ_COL'
+for all_dimensions
+do
+    _thisdim = extchars (all_dimensions 1 findchars (all_dimensions '.') - 1)
+    lmt mapgroup_dim to findchars (mapgroup_dim _thisdim) gt 0 ifnone end_lop3
+    lmt all_hierarchies to extchars (all_hierarchies 1 findchars (all_hierarchies '.') -1) eq _thisdim
+    sort all_hierarchies a all_hierarchies
+    lmt all_levels to extchars (all_levels 1 findchars (all_levels '.') -1) eq _thisdim
+    sort all_levels a all_levels
+    lmt all_attributes to extchars (all_attributes 1 findchars (all_attributes '.') -1) eq _thisdim
+    sort all_attributes a all_Attributes
+
+    for all_hierarchies
+    do
+        _thishier = extchars (all_hierarchies findchars (all_hierarchies, '.') + 1)
+        _thishier = extchars (_thishier 1 findchars (_thishier, '.') - 1)
+        if _thishier eq 'AW$NONE'
+        then continue
+ 
+        for all_levels
+        do
+            for mapgroup_dim
+            do
+                if dim_key_map ne NA
+                then do
+                    _thislevel = extchars (all_levels findchars (all_levels, '.') + 1)
+                    _thislevel = extchars (_thislevel 1 findchars (_thislevel, '.') - 1)
+                    if _thislevel eq 'AW$NONE'
+                    then continue
+                    
+                    _thisowner = extchars (dim_key_map 1 findchars (dim_key_map '.') - 1)
+                    _thisobj = extchars (dim_key_map findchars (dim_key_map '.') + 1)
+                    _thisobj = extchars (_thisobj 1 findchars (_thisobj '.') - 1)                    
+                    _thiscol = extchars (dim_key_map findchars (dim_key_map '.') + 1)
+                    _thiscol = extchars (_thiscol findchars (_thiscol '.') + 1)                    
+                    shw joinchars ('D', ',' _thisdim, ',' _thishier, ',' _thislevel, ',Member', ',,,' _thisowner, ',' _thisobj, ',' _thiscol)
+                doend
+            doend
+        doend
+
+        for all_attributes
+        do
+            _thisattr = extchars (all_attributes findchars (all_attributes, '.') + 1)
+            _thisattr = extchars (_thisattr 1 findchars (_thisattr, '.') - 1)
+            for all_levels
+            do
+                for mapgroup_dim
+                do
+                    if attr_data_map ne NA
+                    then do
+                        _thislevel = extchars (all_levels findchars (all_levels, '.') + 1)
+                        _thislevel = extchars (_thislevel 1 findchars (_thislevel, '.') - 1)
+                        if _thislevel eq 'AW$NONE'
+                        then continue
+                    
+                        _thisowner = extchars (attr_data_map 1 findchars (attr_data_map '.') - 1)
+                        _thisobj = extchars (attr_data_map findchars (attr_data_map '.') + 1)
+                        _thisobj = extchars (_thisobj 1 findchars (_thisobj '.') - 1)                    
+                        _thiscol = extchars (attr_data_map findchars (attr_data_map '.') + 1)
+                        _thiscol = extchars (_thiscol findchars (_thiscol '.') + 1)                    
+                        shw joinchars ('D', ',' _thisdim, ',' _thishier, ',' _thislevel, ',' _thisattr, ',,,' _thisowner, ',' _thisobj, ',' _thiscol)
+                    doend
+                doend
+            doend
+        doend
+    doend    
+    
+end_lop3:
+doend
+
+" Cubes
+lmt all_measures to all
+sort all_measures a all_measures
+
+lmt all_levels to all
+sort all_levels a all_levels
+
+lmt all_cubes to all
+sort all_cubes a all_cubes
+for all_cubes
+do
+    _thiscube = extchars (all_cubes 1 findchars (all_cubes '.') - 1)
+    lmt mapgroup_dim to findchars (mapgroup_dim _thiscube) gt 0 ifnone end_lop4
+
+    for all_levels
+    do
+        for mapgroup_dim
+        do
+            if meas_key_map ne NA
+            then do
+                _thislevel = extchars (all_levels findchars (all_levels, '.') + 1)
+                _thislevel = extchars (_thislevel 1 findchars (_thislevel, '.') - 1)
+                _thisdim = extchars (all_levels 1 findchars (all_levels, '.') - 1)
+                if _thislevel eq 'AW$NONE'
+                then continue
+                    
+                _thisowner = extchars (meas_key_map 1 findchars (meas_key_map '.') - 1)
+                _thisobj = extchars (meas_key_map findchars (meas_key_map '.') + 1)
+                _thisobj = extchars (_thisobj 1 findchars (_thisobj '.') - 1)                    
+                _thiscol = extchars (meas_key_map findchars (meas_key_map '.') + 1)
+                _thiscol = extchars (_thiscol findchars (_thiscol '.') + 1)                    
+                shw joinchars ('C', ',' _thiscube, ',,' _thislevel, ',,' _thisdim, ',,' _thisowner, ',' _thisobj, ',' _thiscol, ':' all_levels)
+            doend
+        doend
+    doend
+
+    for all_measures
+    do
+        for mapgroup_dim
+        do
+            if meas_data_map ne NA
+            then do                   
+                _thismeas = extchars (all_measures findchars (all_measures, '.') + 1)
+                _thismeas = extchars (_thismeas 1 findchars (_thismeas, '.') - 1)                
+                _thisowner = extchars (meas_data_map 1 findchars (meas_data_map '.') - 1)
+                _thisobj = extchars (meas_data_map findchars (meas_data_map '.') + 1)
+                _thisobj = extchars (_thisobj 1 findchars (_thisobj '.') - 1)                    
+                _thiscol = extchars (meas_data_map findchars (meas_data_map '.') + 1)
+                _thiscol = extchars (_thiscol findchars (_thiscol '.') + 1)                    
+                shw joinchars ('C', ',' _thiscube, ',,' _thislevel, ',,,' _thismeas, ',' _thisowner, ',' _thisobj, ',' _thiscol)
+             doend
+        doend
+    doend    
+    
+end_lop4:
+doend
+
+ALLDONE:
+return 0
+
+error:
+shw joinchars ('ERROR: ' errorname ': ' errortext)
+return -1

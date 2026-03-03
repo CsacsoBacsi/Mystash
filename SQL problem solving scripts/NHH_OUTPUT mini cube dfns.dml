@@ -1,0 +1,3 @@
+DEFINE NHH_OUTPUT_PRT_TOPVARF FORMULA DECIMAL <NHH_OUTPUT_PRT_MEASDIM NHH_OUTPUT_VER TIME HALF_HOUR GSP_GROUP_ID ELEC_LICENCE PROFILE_CLASS BUSINESS_STRUCTURE>
+
+EQ &(joinchars ('nhh_output_prt_topvar_' extchars (nhh_output_ver, 1, findchars (nhh_output_ver, '_') - 1)))

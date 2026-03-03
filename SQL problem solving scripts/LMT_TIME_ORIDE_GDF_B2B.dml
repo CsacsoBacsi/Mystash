@@ -1,0 +1,49 @@
+" Purpose: To limit the time dimension only to the values overrides were applied to the NDM cube
+" Created by: Csaba Riedlinger
+" Creation date: 29/08/2008
+
+arg _scen text
+
+push RENEWAL_MONTH BUSINESS_STRUCTURE GAS_PRODUCT GAS_LICENCE LDZ EUC
+
+lmt renewal_month to all
+lmt business_structure to all
+lmt gas_product to all
+lmt gas_licence to all
+lmt ldz to all
+lmt euc to all
+
+if exists ('TIME_OVERRIDDEN')
+then do
+    dlt TIME_OVERRIDDEN
+doend
+dfn time_overridden vrb boolean <time>
+lmt time to all
+time_overridden = false
+
+LMT NDM_SCALED_FCST_SC TO _scen
+LMT SCALED_FCST_VER TO NDM_SCALED_FCST_SC.SCALED_FCST_VER
+LMT OR_ATTR to 'OR_TIMESTAMP'
+lmt time to convert (convert (SCALED_FCST_VER_FORECAST_START, DATE) , text '<MM>/<DD>/<YYYY>') to convert (convert (SCALED_FCST_VER_FORECAST_END, DATE), text '<MM>/<DD>/<YYYY>')
+lmt time add ancestors using time_parentrel
+
+for NDM_SCALED_FCST_SC_N_A_COMPOSITE
+do
+    if NDM_SCALED_FCST_SC_N_A_ATT_SCALED_FIRM_DAILY_SNED_STORED ne na OR NDM_SCALED_FCST_SC_N_A_ATT_SCALED_FIRM_DAILY_WAD_STORED ne na OR NDM_SCALED_FCST_SC_N_A_ATT_SCALED_FLOATING_DAILY_SNED_STORED ne na OR NDM_SCALED_FCST_SC_N_A_ATT_SCALED_FLOATING_DAILY_WAD_STORED ne na OR NDM_SCALED_FCST_SC_N_A_ATT_SCALED_NON_FIRM_DAILY_SNED_STORED ne na OR NDM_SCALED_FCST_SC_N_A_ATT_SCALED_NON_FIRM_DAILY_WAD_STORED ne na OR NDM_SCALED_FCST_SC_N_A_ATT_SCALED_OOC_DAILY_SNED_STORED ne na OR NDM_SCALED_FCST_SC_N_A_ATT_SCALED_OOC_DAILY_WAD_STORED ne na OR NDM_SCALED_FCST_SC_N_A_ATT_SITE_COUNT_STORED ne na
+    then do
+        time_overridden = true
+    doend
+doend
+
+pop RENEWAL_MONTH BUSINESS_STRUCTURE GAS_PRODUCT GAS_LICENCE LDZ EUC
+
+oknullstatus = yes
+lmt time to time_overridden eq true
+lmt time to bottomdescendants using time_parentrel
+lmt time keep time_levelrel 'DAY'
+
+return 0
+
+error:
+shw joinchars ('ERROR: ' errorname ': ' errortext)
+return -1

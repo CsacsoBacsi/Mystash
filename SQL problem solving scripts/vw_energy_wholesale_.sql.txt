@@ -1,0 +1,49 @@
+CREATE OR REPLACE VIEW VW_ENERGY_WHOLESALE_
+(TIME_ID, HALF_HOUR, BUSINESS_STRUCTURE, BMU_ID, ELEC_PRODUCT, 
+ S_SCALED_CORRECTED_NBP)
+AS 
+with t1 as ( 
+     select a.time_id, 
+            a.half_hour, 
+            a.proposition_id as elec_product, -- Already on proposition level 
+            b.sector as business_structure, 
+            b.gsp_group_id, 
+            b.elec_licence, 
+            SUM (S_SCALED_CORRECTED_NBP) as S_SCALED_CORRECTED_NBP -- Becasue of Profile Class in edf_nhh_output_key 
+     from   edf_t_nhh_pub a, 
+            edf_nhh_output_key b
+     where  a.output_key_id = b.output_key_id 
+     group by a.time_id, 
+              a.half_hour, 
+              a.proposition_id, 
+              b.sector, 
+              b.gsp_group_id, 
+              b.elec_licence 
+), 
+t2 as ( 
+     select   t1.time_id, 
+              t1.half_hour, 
+              t1.business_structure, 
+              t2.bmu_id, -- Replaces elec_licence and gsp_group_id 
+              t1.elec_product, 
+              SUM (t1.S_SCALED_CORRECTED_NBP) as S_SCALED_CORRECTED_NBP 
+     from     t1, 
+              gsp_bmu_map t2 
+     where    t1.gsp_group_id = t2.gsp_group_id 
+              AND t1.elec_licence = t2.elec_licence 
+     group by time_id, 
+              half_hour, 
+              business_structure, 
+              bmu_id, 
+              elec_product 
+) 
+select to_char (time_id, 'MM/DD/YYYY') as time_id, 
+       half_hour, 
+       business_structure, 
+       bmu_id, 
+       elec_product, 
+       S_SCALED_CORRECTED_NBP / 1000 as S_SCALED_CORRECTED_NBP 
+from   t2
+/
+
+

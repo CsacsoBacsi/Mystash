@@ -1,0 +1,19 @@
+vrb _nl decimal
+vrb _nc decimal
+
+lmt name to obj (type) eq 'PROGRAM'
+_nl = 0
+_nc = 0
+
+for name
+do
+
+    _nl = _nl + numlines (obj (program name))
+    _nc = _nc + numchars (obj (program name))
+
+doend
+
+decimals = 0
+commas = no
+shw joinchars (_nl ', ' _nc)
+

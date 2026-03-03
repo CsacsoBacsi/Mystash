@@ -1,0 +1,54 @@
+" Creates a new detail override structure for SCALED_FORECAST keeping the old ones as well
+" CR - 30/04/2008
+
+trap on error noprint
+
+" Rename old composites instead of deleting them so we can still revert...
+lmt name to findchars (name 'SCALED_FORECAST_SC_N_NC_COMP_') gt 0 AND obj (type) eq 'COMPOSITE'
+
+for name
+do
+    shw  joinchars ('rename ' name ' ' name '_OLD')
+    &joinchars ('rename ' name ' ' name '_OLD')
+doend
+
+" Keep old default partition composite (Rename) and create a new one
+shw 'rename SCALED_FORECAST_SC_N_NC_DFLT_PRTCOMP SCALED_FORECAST_SC_N_NC_DFLT_PRTCOMP_OLD'
+rename SCALED_FORECAST_SC_N_NC_DFLT_PRTCOMP SCALED_FORECAST_SC_N_NC_DFLT_PRTCOMP_OLD
+shw 'define SCALED_FORECAST_SC_N_NC_DFLT_PRTCOMP COMPOSITE <ELEC_PRODUCT BUSINESS_STRUCTURE GSP_GROUP_ID RENEWAL_MONTH>'
+define SCALED_FORECAST_SC_N_NC_DFLT_PRTCOMP COMPOSITE <ELEC_PRODUCT BUSINESS_STRUCTURE GSP_GROUP_ID RENEWAL_MONTH>
+
+" Rename old partition template
+shw 'rename SCALED_FORECAST_SC_N_NC_PARTITION_TEMPLATE SCALED_FORECAST_SC_N_NC_PARTITION_TEMPLATE_OLD'
+rename SCALED_FORECAST_SC_N_NC_PARTITION_TEMPLATE SCALED_FORECAST_SC_N_NC_PARTITION_TEMPLATE_OLD
+
+" Rename old detail override cube
+shw 'rename SCALED_FORECAST_SC_N_NC_PRT_TOPVAR SCALED_FORECAST_SC_N_NC_PRT_TOPVAR_OLD'
+rename SCALED_FORECAST_SC_N_NC_PRT_TOPVAR SCALED_FORECAST_SC_N_NC_PRT_TOPVAR_OLD
+
+" Define new Time, MeasDim, ChangeDim composite
+shw 'define SCALED_FORECAST_SC_N_NC_DFLT_TMCCOMP COMPOSITE <TIME SCALED_FORECAST_SC_N_PRT_MEASDIM SCALED_FORECAST_CHG>'
+define SCALED_FORECAST_SC_N_NC_DFLT_TMCCOMP COMPOSITE <TIME SCALED_FORECAST_SC_N_PRT_MEASDIM SCALED_FORECAST_CHG>
+
+" Define new detail override formula
+shw 'define SCALED_FORECAST_SC_N_NC_PRT_TOPVAR FORMULA DECIMAL <HALF_HOUR TIME SCALED_FORECAST_SC_N_PRT_MEASDIM SCALED_FORECAST_CHG ELEC_PRODUCT BUSINESS_STRUCTURE GSP_GROUP_ID RENEWAL_MONTH>'
+shw 'EQ &(joinchars (\'scaled_forecast_sc_n_nc_prt_topvar_\' decode (scaled_forecast_sc, \'**NEW**\',\'NEW\', scaled_forecast_sc)))'
+DEFINE SCALED_FORECAST_SC_N_NC_PRT_TOPVAR FORMULA DECIMAL <HALF_HOUR TIME SCALED_FORECAST_SC_N_PRT_MEASDIM SCALED_FORECAST_CHG ELEC_PRODUCT BUSINESS_STRUCTURE GSP_GROUP_ID RENEWAL_MONTH>
+EQ &(joinchars ('scaled_forecast_sc_n_nc_prt_topvar_' decode (scaled_forecast_sc, '**NEW**','NEW', scaled_forecast_sc)))
+
+" New detail override cube should be defined as:
+" DEFINE SCALED_FORECAST_SC_N_NC_S001 VRB DECIMAL <HALF_HOUR, SCALED_FORECAST_SC_N_NC_S001_TMCCOMP <TIME SCALED_FORECAST_SC_N_PRT_MEASDIM SCALED_FORECAST_CHG>, SCALED_FORECAST_SC_N_NC_S001_PRTCOMP <ELEC_PRODUCT BUSINESS_STRUCTURE GSP_GROUP_ID RENEWAL_MONTH>
+
+" Commit changes
+shw 'Committing changes...'
+upd
+cmm
+shw 'Done.'
+
+return 0
+
+error:
+shw errortext
+return -1
+
+END

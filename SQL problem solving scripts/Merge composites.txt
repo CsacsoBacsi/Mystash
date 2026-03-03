@@ -1,0 +1,159 @@
+"~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+"Program     : MERGE_COMPOSITES
+"Author      : Csaba Riedlinger
+"Purpose     : Derives a single composite object from the individual partition composites of a compressed or non-compressed cube
+"Arguments   : 1) Cube name [text] (physical name, not logical)
+"              2) Base level only flag [boolean] default = n
+" Calling    : shw MERGE_COMPOSITES ('GDF_SMALL', true)
+"Assumptions : - Cube is partitioned
+"              - No global composite is used if composite is not compressed
+"              - Partition templates are named <cube_name>_PARTITION_TEMPLATE
+"              - Works with 10.2.0.2 standard form metadata
+"              - No need to notify caller of any error
+"              - No need to update / commit
+"~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+" Who  When     Ver    Description
+" ~~~  ~~~~~~~  ~~~  ~~~~~~~~~~~~~~~
+" CR   02SEP08  1.0  - Original program written (based on Bunby Stuart's BUILD_UNION_COMPOSITE
+" ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+argument _cube            text
+argument _base_only       boolean
+
+variable _part_template   text
+variable _part_hier       text
+variable _part_dim        text
+variable _part_list       text
+variable _part_name       text
+variable _cube_dims       text
+variable _part_comp       text
+variable _part_dimlist    text
+variable _new_comp        text
+
+variable _i               integer
+variable _x               integer
+variable k                integer
+variable _str             text
+
+"Set ERROR trap and push status
+trap on ERROR
+pushlevel 'MERGE_COMPOSITES'
+
+"Has a valid cube name been supplied?
+if not isvalue(all_cubes, joinchars(_cube '.CUBE'))
+then do
+    shw joinchars(_cube ' is not a valid cube')
+    goto ERROR
+doend
+
+"Is the cube compressed?
+if cube_catalog(all_cubes joinchars(_cube '.CUBE'), cube_prop 'COMP_COMPRESSED') ne 'YES'
+then do
+    shw joinchars (_cube ' is not a compressed cube')
+    goto ERROR
+doend
+
+"Is the cube partitioned?
+_part_hier = cube_dflt_partition_hierarchy(all_cubes joinchars(_cube '.CUBE'))
+if _part_hier eq na
+then do
+    shw joinchars(_cube ' is not a partitioned cube')
+    goto ERROR
+doend
+
+"Does the assumed partition template really exist?
+_part_template = joinchars(_cube '_PARTITION_TEMPLATE')
+if not exists(_part_template)
+then do
+    shw joinchars (_part_template ' does not exist.')
+    goto ERROR
+doend
+
+"What are the cube dimensions?
+_cube_dims = obj (property 'ALLDIMENSIONS' _cube)
+_cube_dims = remlines (_cube_dims findlines (_cube_dims, obj (partby _part_template)))
+
+"Base level only? - if so, push status and set limits
+_base_only = nafill (_base_only, n)
+if not _base_only
+   then goto JUMPLIMITS
+shw joinchars(tod ' Setting limits....')
+_i=1
+while _i le numlines(_cube_dims)
+do
+    &joinchars('push ' extlines(_cube_dims, _i, 1))
+    _str = joinchars ('limit ' extlines(_cube_dims, _i, 1) ' to bottomdescendants')
+    shw _str
+    &_str
+    _i = _i + 1
+doend
+shw joinchars(tod ' Finished limits....')
+blank
+JUMPLIMITS:
+
+"Create new composite object and delete any existing one with same name first
+_part_dimlist = obj (partdims, 'P0', _part_template)
+k = 1
+while k le numlines (_part_dimlist)
+do
+    if findchars (extlines (_part_dimlist k 1) '<') gt 0
+    then break
+    k = k + 1
+doend
+_part_comp = extchars (extlines (_part_dimlist, k, 1), 1, findchars (extlines (_part_dimlist, k, 1), '<') - 1)
+
+_new_comp = joinchars(_cube '_CUSTOM_COMPOSITE')
+if exists(_new_comp)
+then delete &_new_comp
+_str = joinchars('define ' _new_comp ' composite <')
+_i = 1
+while _i le numlines (obj (dims _part_comp))
+do
+    _str = joinchars (_str, extlines (obj (dims _part_comp), _i, 1), ' ')
+    _i = _i + 1
+doend
+_str = joinchars(_str '>')
+shw _str
+&_str
+blank
+
+"For each partition in the partition template
+_part_list = obj (partnames _part_template)
+_i = 1
+while _i le numlines (_part_list)
+do
+    _part_name = extlines (_part_list, _i, 1)
+    "Skip default template
+    if _part_name eq 'P0'
+    then goto JUMPPARTITION
+
+    "Find out the name of the partition composite - it will be on line 3 of the dim list
+    _part_dimlist = obj (partdims, _part_name, _part_template)    
+    _part_comp = extchars (extlines (_part_dimlist, k, 1), 1, findchars(extlines(_part_dimlist, k, 1), '<') - 1)
+
+    shw joinchars(tod ' Partiton:- ' _part_name '    Composite:- ' _part_comp)
+    _str = joinchars('maintain ' _new_comp ' merge ' _part_comp)
+
+    "If composite has no values move on to next partition
+    if obj(dimmax _part_comp) eq na or obj(dimmax _part_comp) lt 1
+    then goto JUMPPARTITION
+
+    "Execute merge statement
+    shw _str
+    &_str
+
+    shw joinchars(_new_comp ' has ' obj (dimmax _new_comp) ' values')
+    JUMPPARTITION:
+    blank
+    _i = _i + 1
+doend
+
+" Update / commit?
+
+ALLDONE:
+poplevel 'MERGE_COMPOSITES'
+return 0
+
+ERROR:
+poplevel 'MERGE_COMPOSITES'
+return -1

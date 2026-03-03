@@ -1,0 +1,85 @@
+Italic: ''italic''
+Bold: '''bold'''
+Bold and italic: '''''bold & italic'''''
+Strike: <strike> strike text </strike>
+Escape: <nowiki>no ''markup''</nowiki>
+
+Headings:
+== Level 2 ==
+=== Level 3 ===
+==== Level 4 ====
+===== Level 5 =====
+====== Level 6 ======
+
+Horizontal rule:
+Text before
+----
+Text after
+
+Bullets:
+* Line 1
+** Line 2
+*** Line 3
+
+Numbered list:
+# This is 1.
+# This is 2.
+## This is indented 1.
+### This is more indented 1.
+### This is more indented 2.
+
+Definition list:
+;item 1 (turns out to be bold)
+: definition 1 (indented)
+;item 2
+: definition 2-1
+
+Indentation:
+: Single indent
+:: Double indent
+::::: Multiple indent
+
+Fixed with text:
+<code>Source code</code>
+
+Comments:
+<!-- This is a comment -->
+
+Pre-formatted (does not change on display):
+<pre style="color: red">Text is '''preformatted''' 
+with a style and 
+''markups'' '''''cannot''''' be done
+</pre>
+
+Tables:
+{| width="1000" cellspacing="1" cellpadding="1" border="5" class="wikitable"
+|+ <br> 
+|-
+! width="100" scope="col" | Fact table & columns
+! width="250" scope="col" | Join column 
+! width="150" scope="col" | Dimension 
+! width="150" scope="col" | Description 
+! width="150" scope="col" | Type
+|-
+| analysis_date (D)
+| ANALYSIS_DATE = FULL_DATE
+| DIM_T_DATE
+| Date (day)
+| Standard
+|}
+
+
+Links to files:
+[[Media:Ofgem_MM_EON.pdf|Ofgem - Request for information PDF]]
+</br>
+[[Media:Report_1_-_Electricity_general.xlsx|Report 1 - Electricity general]]
+</br>
+[[Media:Electric_3_Week_Switching_v2_2.sql|Electric 3 Week Switching v2.2]]
+</br>
+[[File: Obi_business_model_OFGEM_Submission_FACTS_v2.png]]
+
+[[Image:OfgemMMDimModel.png]]
+
+link to another web page:
+[http://www.bbc.co.uk Link to Page3]
+

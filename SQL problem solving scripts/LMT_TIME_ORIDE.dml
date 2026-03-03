@@ -1,0 +1,55 @@
+DEFINE LMT_TIME_ORIDE PROGRAM INTEGER
+PROGRAM
+" Purpose: To limit the time dimension only to the values overrides were applied to
+" Created by: Csaba Riedlinger
+" Creation date: 29/08/2008
+
+arg _scen text
+
+push HALF_HOUR GSP_GROUP_ID ELEC_LICENCE PROFILE_CLASS BUSINESS_STRUCTURE
+
+lmt half_hour to all
+lmt gsp_group_id to all
+lmt elec_licence to all
+lmt profile_class to all
+lmt business_structure to all
+
+if exists ('TIME_OVERRIDDEN')
+then do
+    dlt TIME_OVERRIDDEN
+doend
+dfn time_overridden vrb boolean <time>
+lmt time to all
+time_overridden = false
+
+LMT NHH_OUTPUT_SC TO _scen
+LMT NHH_OUTPUT_VER TO NHH_OUTPUT_SC.NHH_OUTPUT_VER
+LMT OR_ATTR to 'OR_TIMESTAMP'
+lmt time to convert (NHH_OUTPUT_VER_FORECAST_START_DATE, text '<MM>/<DD>/<YYYY>') to convert (NHH_OUTPUT_VER_FORECAST_END_DATE, text '<MM>/<DD>/<YYYY>')
+lmt time add ancestors using time_parentrel
+
+status time
+for time
+do
+    for NHH_OUTPUT_SC_N_A_COMPOSITE
+    do
+
+        if NHH_OUTPUT_SC_N_A_ATT_SCALED_CORRECTED_CT_STORED ne NA or NHH_OUTPUT_SC_N_A_ATT_SCALED_CORRECTED_GSP_STORED ne NA or NHH_OUTPUT_SC_N_A_ATT_SCALED_CORRECTED_NBP_STORED ne NA or NHH_OUTPUT_SC_N_A_ATT_SCALED_CORRECTED_STORED ne NA or NHH_OUTPUT_SC_N_A_ATT_S_FLAT_CORRECTED_STORED ne NA or NHH_OUTPUT_SC_N_A_ATT_S_FLAT_STORED ne NA or NHH_OUTPUT_SC_N_A_ATT_S_SCALED_CORRECTED_STORED ne NA
+        then do
+            time_overridden = true
+        doend
+    doend
+doend
+
+pop HALF_HOUR GSP_GROUP_ID ELEC_LICENCE PROFILE_CLASS BUSINESS_STRUCTURE
+
+lmt time to time_overridden eq true
+lmt time to bottomdescendants using time_parentrel
+lmt time keep time_levelrel 'DAY'
+
+return 0
+
+error:
+shw joinchars ('ERROR: ' errorname ': ' errortext)
+return -1
+END

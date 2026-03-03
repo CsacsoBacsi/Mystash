@@ -1,0 +1,90 @@
+vrb _val shortdecimal
+vrb _currpit1 pit1
+vrb _currsday1 sday1
+vrb _currmpan1 mpan1
+
+_currpit1 = pit1
+_currsday1 = sday1
+_currmpan1 = mpan1
+
+"if _currsday1 eq na 
+"then return
+
+_val = na
+"if _inrec
+"then return
+
+"_inrec = true
+tempstat pit1, sday1, mpan1
+do
+   lmt mpan1 to _currmpan1
+   lmt pit1 to 1 to _currpit1
+   lmt sday1 to 1 to _currsday1
+   
+   lmt pit1 keep mycomp
+   lmt pit1 keep top 1 basedon pit1
+   lmt sday1 keep mycomp
+   lmt sday1 keep top 1 basedon sday1
+
+
+"      lmt sday1 to 1 to _currsday1
+"      lmt sday1 keep mycomp
+"      lmt sday1 keep top 1 basedon sday1
+"      if cube1 ne na
+"      then do
+         _val = cube1
+"         break
+"      doend
+doend
+"_inrec = false
+return _val
+
+
+
+vrb _val shortdecimal
+vrb _currpit1 pit1
+vrb _currsday1 sday1
+vrb _currmpan1 mpan1
+
+_currpit1 = pit1
+_currsday1 = sday1
+_currmpan1 = mpan1
+
+_val = na
+tempstat pit1, sday1, mpan1
+do
+   lmt mpan1 to _currmpan1
+   lmt pit1 to nafill (hpit1 (sday1 _currsday1), 1) to _currpit1
+   lmt sday1 to nafill (hsday1 (pit1 _currpit1), 1) to _currsday1
+   
+   if hpit1 (sday1 _currsday1) eq na
+   then do
+      lmt pit1 keep mycomp
+      lmt pit1 keep top 1 basedon pit1
+      hpit1 (sday1 _currsday1) = pit1
+   doend
+   else do
+      lmt pit1 keep mycomp
+      lmt pit1 keep top 1 basedon pit1   
+      if convert (pit1 integer) gt convert (hpit1 (sday1 _currsday1) integer)
+      then hpit1 (sday1 _currsday1) = pit1
+      lmt pit1 to hpit1 (sday1 _currsday1)
+   doend
+   
+   if hsday1 (pit1 _currpit1)eq na
+   then do
+      lmt sday1 keep mycomp
+      lmt sday1 keep top 1 basedon sday1
+      hsday1 (pit1 _currpit1)= sday1
+   doend
+   else do
+      lmt sday1 keep mycomp
+      lmt sday1 keep top 1 basedon sday1
+      if convert (sday1 integer) gt convert (hsday1 (pit1 _currpit1) integer)
+      then hsday1 (pit1 _currpit1) = sday1   
+      lmt sday1 to hsday1 (pit1 _currpit1)
+   doend
+   _val = cube1
+doend
+
+return _val

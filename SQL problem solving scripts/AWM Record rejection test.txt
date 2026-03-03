@@ -1,0 +1,52 @@
+vrb _time text
+vrb _hh text
+vrb _bus text
+vrb _bmu text
+vrb _elec text
+
+trap on error noprint
+
+errortext = ''
+
+sql declare c1 cursor for select time_id, half_hour, business_structure, bmu_id, elec_product from FINANCE.VW_ENERGY_WHOLESALE
+sql open c1
+
+if sqlcode ne 0
+then goto error
+
+while sqlcode eq 0
+do
+   sql fetch c1 into :_time, :_hh, :_bus, :_bmu, :_elec
+   if not isvalue (time _time)
+   then do
+      shw joinchars ('Time problem: ' _time, ' ' _hh, ' ' _bus, ' ' _bmu ' ' _elec)
+      break
+   doend
+   if not isvalue (half_hour _hh)
+   then do
+      shw joinchars ('Half hour problem: ' _time, ' ' _hh, ' ' _bus, ' ' _bmu ' ' _elec)
+      break
+   doend
+   if not isvalue (business_structure _bus)
+   then do
+      shw joinchars ('Business structure problem: ' _time, ' ' _hh, ' ' _bus, ' ' _bmu ' ' _elec)
+      break
+   doend
+   if not isvalue (bmu _bmu)
+   then do
+      shw joinchars ('Bmu problem: ' _time, ' ' _hh, ' ' _bus, ' ' _bmu ' ' _elec)
+      break
+   doend
+   if not isvalue (elec_product_proposition_surr _elec)
+   then do
+      shw joinchars ('Elec product problem: ' _time, ' ' _hh, ' ' _bus, ' ' _bmu ' ' _elec)
+      break
+   doend
+doend
+
+sql close c1
+
+error:
+shw errortext
+shw sqlerrm
+

@@ -1,0 +1,48 @@
+vrb _time date
+
+trap on error noprint
+
+" Translate OLAP_TABLE view WHERE-clause into limits
+lmt gcns_small_ver to '10153'
+lmt gas_site_type to gas_site_type_levelrel eq 'BASE'
+lmt gas_licence to gas_licence_levelrel eq 'BASE'
+lmt business_structure to business_structure_levelrel eq 'SECTOR'
+lmt ldz to ldz_levelrel eq 'LDZ'
+lmt euc to euc_levelrel eq 'EUC'
+lmt gas_product to gas_product_levelrel eq 'PRODUCT_TYPE'
+
+lmt time_hierlist to 'CAL_YEAR'
+lmt time to '08/01/2009' to '12/31/2014' " Forecast period. Could be parameters to this DML...
+
+" Relational table columns
+" TIME, TIME_MONTH, GAS_SITE_TYPE, GAS_LICENCE, SECTOR,
+" LDZ, EUC, PRODUCT_TYPE, VERSION_ID, VERSION_DESC,
+" SITE_COUNT, SNED, WAD
+
+SQL PREPARE s1 FROM INSERT INTO FINANCE.gdf_small_nonagg_wb VALUES (:_time, :time_parentrel, :gas_site_type, :gas_licence, :business_structure, :ldz, :euc, :gas_product, :gcns_small_ver, :gcns_small_ver_long_description, :gdf_small_non_agg_site_count, :gdf_small_non_agg_seasonal_normal_est_demand, gdf_small_non_agg_weather_adjusted_demand)
+
+for time
+do
+   for gdf_small_non_agg_composite " Composite used in OLAP_TABLE view
+   do
+          
+       _time = convert (time, date, 'MDY') " Because time dim is text and we need date to write out
+
+       SQL execute s1 " Execute prepared statement (INSERT)
+
+       if sqlcode ne 0 " Check if any error occurred
+       then do
+           shw joinchars ('SQL error: ' sqlcode ': ' sqlerrm)
+           return -1           
+       doend
+
+   doend
+doend
+
+commit
+
+return 0
+
+error:
+shw errortext
+return -1

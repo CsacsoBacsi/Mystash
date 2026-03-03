@@ -1,0 +1,52 @@
+"-------------------------------------------------------------------------------------------------------------
+" Purpose:      Discover basecube dependent override structure (main loop)
+" Argument:     ReportType (integer), 1: Screen - text format, 2: Screen - CSV format
+" Call syntax:  GET_OR_OBJ_MAIN 2
+" Returns:      Override structure related to the basecube
+"               The list is echoed to the standard output (screen) either in text format or
+"               as a comma separated list of columns
+" Prerequisite: An AW with metadata objects present must be attached
+" Created by:   C10879
+" Date created: 24/09/2009
+"-------------------------------------------------------------------------------------------------------------
+
+arg _rep_type integer
+
+vrb _thiscube text
+vrb _thismeas text
+
+trap on error noprint
+
+lmt all_cubes to findchars (all_cubes '_SC_N.CUBE') eq 0 and findchars (all_cubes '_SC_VW.CUBE') eq 0 and findchars (all_cubes '_SC_N_A.CUBE') eq 0
+sort all_cubes a all_cubes
+
+if _rep_type eq 2
+then do
+    shw joinchars ('BASE_CUBE,', 'BASE_MEAS,', 'BASE_CUBE_TYPE,', 'OR_TYPE,', 'OR_SUB_TYPE,', 'TOTAL_OR_MEAS,', 'DETAIL_AUDIT_MEAS,', -
+                   'TOTAL_AUDIT_MEAS,', 'VIEW_MEAS,', 'VIEW_MEAS_EQU,', 'SCENARIO_DIM,', 'CHG_DIM,', 'DETAIL_OR_MEAS,', 'COMPOSITE,', 'HWM_REL,', -
+                   'HIGHEST_HWM,', 'SCENARIO')
+doend
+
+for all_cubes
+do
+    lmt all_measures to cube_measures
+    sort all_measures a all_measures
+
+    if _rep_type eq 1
+    then do
+        shw joinchars ('************************* ' extchars (all_cubes, 1, findchars (all_cubes '.') - 1) ' *************************')
+        blank
+    doend
+    for all_measures
+    do
+        _thismeas = extchars (all_measures findchars (all_measures '.') + 1)
+        _thismeas = extchars (_thismeas 1 findchars (_thismeas '.') - 1)
+        _thiscube = extchars (all_cubes 1 findchars (all_measures '.') - 1)
+        call get_or_obj (_thiscube, _thismeas, _rep_type)
+    doend
+doend
+
+return 0
+
+error:
+return -1

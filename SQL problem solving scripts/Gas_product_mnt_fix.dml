@@ -1,0 +1,33 @@
+vrb _thislevel text
+vrb _thisval   text
+
+lmt gas_product_hierlist to all
+lmt gas_product to gas_product_levelrel eq na " Get list of dangler gas product members
+
+for gas_product
+do
+    _thisval = gas_product
+    _thislevel = extchars (gas_product, 1, findchars (gas_product, '_') - 1) " Establish which level item is on
+    
+    switch _thislevel
+    do
+        case 'VERSION':
+             GAS_PRODUCT_VERSION_SURR = extchars (gas_product, 9) " Fix the surrogate
+             gas_product_levelrel = 'VERSION' " Fix the level
+             LIMIT gas_product_inhier (gas_product_hierlist 'STD') ADD _thisval " Fix the valueset
+             break
+        case 'PRODUCT':
+             GAS_PRODUCT_PRODUCT_TYPE_SURR = extchars (gas_product, 14)        
+             gas_product_levelrel = 'PRODUCT_TYPE'
+             LIMIT gas_product_inhier (gas_product_hierlist 'STD') ADD _thisval             
+             LIMIT gas_product_inhier (gas_product_hierlist 'PROD') ADD _thisval              
+             break
+        case 'PROPOSITION':
+             GAS_PRODUCT_PROPOSITION_SURR = extchars (gas_product, 13)
+             gas_product_levelrel = 'PROPOSITION'             
+             LIMIT gas_product_inhier (gas_product_hierlist 'STD') ADD _thisval
+             LIMIT gas_product_inhier (gas_product_hierlist 'PROD') ADD _thisval
+             LIMIT gas_product_inhier (gas_product_hierlist 'PROP') ADD _thisval 
+             break
+    doend
+doend

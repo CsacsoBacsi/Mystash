@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html>
+<body>
+
+<p id="p1" zuzmo="zumi">Hello World!</p>
+<p id="p2">Another text</p>
+<a href="www.hotmail.com" target="_blank">Mail</a>
+
+<script>
+document.getElementById("p1").innerHTML="New text!";
+var root=document.documentElement; // Get the root element
+var x=document.getElementsByTagName("p"); // Get all paragraphs
+document.write("Hm " + x[1].innerHTML + " "); // Get the text from within the element
+document.write("Length:" + document.childNodes.length) ;
+document.write("<br />"); // Line break
+
+var bd=document.getElementsByTagName("body");
+bd[0].childNodes[2].setAttribute("whatever","anything"); // Creates an attribute for the 3rd child (<a href...>)
+
+newatt=document.createAttribute("MyAttr"); // Another metohd to add an attribute to an existing element
+newatt.nodeValue="MyAttrValue";
+bd[0].childNodes[2].setAttributeNode(newatt);
+
+var mylength=bd[0].childNodes.length; // Take the current snapshot as this script will add new children so it is going to be an infinite loop otherwise!
+document.write("Number of children: " + mylength);
+document.write("<br />");
+
+for (i=0;i<mylength;i++) { // Use mylength to avoid infinite loop by referencing length (which is dynamic)
+   document.write(i+1 + ".Name: " + bd[0].childNodes[i].nodeName) ; // Get node name
+   document.write("<br />");
+   document.write("Type: " + bd[0].childNodes[i].nodeType) ; // Get node type
+   document.write("<br />");
+   if (bd[0].childNodes[i].attributes != null) { // Must check for null!!!
+       document.write("Number of attrs: " + bd[0].childNodes[i].attributes.length);
+   }
+   else {
+       document.write("Number of attrs: 0");
+   }
+   document.write("<br />");
+   if (bd[0].childNodes[i].nodeType==3) { // Only for text nodes
+       document.write("Value of text: " + bd[0].childNodes[i].nodeValue) ;
+       document.write("<br />");
+   }
+   if (i == 2) {
+       for (j=0;j<bd[0].childNodes[i].attributes.length;j++) {
+           document.write("Attr: " + bd[0].childNodes[i].attributes[j].nodeName);
+           document.write("<br />");
+           document.write("AttrValue: " + bd[0].childNodes[i].attributes[j].nodeValue);
+           document.write("<br />");
+       }
+   }
+}
+var para=document.createElement("h1"); // Create new element
+var node=document.createTextNode("Something in H1"); // Create a text node
+para.appendChild(node); // Add this text node to the h1 element
+bd[0].appendChild(para); // Add the h1 element to the body element
+
+document.write("Root: " + root.nodeName) ; // Result: HTML
+
+</script>
+
+<p id="lastpar">The paragraph above was changed by a script.</p>
+
+<button onclick="myFunction()">Try it</button>
+
+
+<script>
+person=new Object();
+person.firstname="John";
+person.lastname="Doe";
+person.age=50;
+person.eyecolor="blue"; 
+
+document.write("<br />") ;
+document.write("Person object age property: " + person.age) ;
+document.write("<br />") ;
+document.write("Person object first name: " + person.firstname.toUpperCase());
+document.write("<br />") ;
+
+x=5+5;
+y="5"+5; // Will be 55!
+z="Hello"+5;
+
+document.write("Result: " + 5 + "5") ;
+document.write("<br />") ;
+
+</script>
+
+<script>
+function myFunction()
+{
+    alert("Hi!");
+    document.getElementById("lastpar").innerHTML="New text added dynamically!";
+}
+
+</script>
+
+</body>
+</html>

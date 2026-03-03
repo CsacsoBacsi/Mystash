@@ -1,0 +1,102 @@
+" ------------------------------------------------------------------------------
+" Program: COPY_NC_SCENARIO
+" Params: CubeName, FromScenarioID, ToScenarioID
+" Example: shw copy_nc_scenario ('NHH_OUTPUT', 'N032', 'N049')
+" Created by: Csaba Riedlinger
+" Date: 29th of Oct, 2007
+" Purpose: To support the copy of existing scenarios into new ones where the underlying override
+"          structure is custom such as for NHH_OUTPUT
+"
+" Modified by/on: CR - 05/11/2007 - Added: Scenario copying for Total override cube
+"                 CR - 06/11/2007 - Added: Scenario copying of audit cube
+"                 CR - 23/11/2007 - Added: GDF_SMALL
+"                 CR - 11/03/2010 - Added: Copying of GDF SMALL total override data
+
+arg CubeName text       " Name of cube
+arg FromScenarioID text " Scenario ID to copy from
+arg ToScenarioID text   " Scenario ID to copy to
+
+vrb _dims text          " Multiline text that holds all the dimensions of the cube to be copied
+vrb _numdims integer    " Number of dimensions the cube to be copied has
+vrb i integer           " Used in loop
+vrb _thisdim text       " Holds the current dim of the cube while looping over all the dims
+
+trap on error noprint
+
+" Set all dims' status to ALL before copying
+_dims = obj (dims joinchars (CubeName, '_SC_N_NC_PRT_TOPVAR_' FromScenarioID))
+_numdims = numlines (_dims)
+i = _numdims
+while i gt 0
+do
+    _thisdim = extlines (_dims i 1)
+    lmt &_thisdim to all
+    i = i - 1
+doend
+
+" Copy Total override scenario first for GDF_SMALL
+&(joinchars ('lmt ' CubeName '_SC to \'' ToScenarioID '\'')) " Limit scenario
+
+if CubeName eq 'GDF_SMALL'
+then do
+   blank
+   shw joinchars (tod ': Total override')
+   shw joinchars (CubeName '_SC_N_PRT_TOPVAR' ' = ' CubeName '_SC_N_PRT_TOPVAR (GDF_SMALL_SC \'' FromScenarioID '\') across ' CubeName '_SC_N_' FromScenarioID '_PRTCOMP')
+   blank
+   for &(joinchars (CubeName '_SC_N_NC_TMCCOMP_' FromScenarioID))
+   do
+       &(joinchars (CubeName '_SC_N_PRT_TOPVAR' ' = ' CubeName '_SC_N_PRT_TOPVAR (GDF_SMALL_SC \'' FromScenarioID '\') across ' CubeName '_SC_N_' FromScenarioID '_PRTCOMP'))
+   doend
+doend
+
+" Copy Total override scenario first for NHH_OUTPUT
+if CubeName eq 'NHH_OUTPUT'
+then do
+   blank
+   shw joinchars (tod ': Total override')
+   shw joinchars (CubeName '_SC_N_PRT_TOPVAR' ToScenarioID ' = ' CubeName '_SC_N_PRT_TOPVAR_' FromScenarioID ' across ' CubeName '_SC_N_' FromScenarioID '_PRTCOMP')
+   blank
+   for &(joinchars (CubeName '_SC_N_TMCCOMP_' FromScenarioID))
+   do
+       &(joinchars (CubeName '_SC_N_PRT_TOPVAR_' ToScenarioID ' = ' CubeName '_SC_N_PRT_TOPVAR_' FromScenarioID ' across ' CubeName '_SC_N_' FromScenarioID '_PRTCOMP'))
+   doend
+doend
+
+" Copy Detail override scenario second
+shw joinchars (tod ': Detail override')
+shw joinchars (CubeName '_SC_N_NC_PRT_TOPVAR_' ToScenarioID ' = ' CubeName '_SC_N_NC_PRT_TOPVAR_' FromScenarioID ' across ' CubeName '_SC_N_NC_COMP_' FromScenarioID)
+blank
+for &(joinchars (CubeName '_SC_N_NC_TMCCOMP_' FromScenarioID))
+do
+    &(joinchars (CubeName '_SC_N_NC_PRT_TOPVAR_' ToScenarioID ' = ' CubeName '_SC_N_NC_PRT_TOPVAR_' FromScenarioID ' across ' CubeName '_SC_N_NC_COMP_' FromScenarioID))
+doend
+
+" Copy audit info third
+&(joinchars ('lmt ' CubeName '_SC to \'' FromScenarioID '\'')) " Limit scenario
+&(joinchars ('lmt ' CubeName '_CHG to 1 to ' CubeName '_SC.' CubeName '_CHG')) " Limit change dim
+&(joinchars ('lmt ' CubeName '_PRT_MEASDIM to all')) " Limit measuredim
+lmt or_attr to all " Limit attributes
+
+shw joinchars (tod ' :Audit')
+for &(joinchars (CubeName '_PRT_MEASDIM'))
+do
+   shw joinchars (CubeName '_SC_N_A_NC_ATT_' &(joinchars (CubeName '_PRT_MEASDIM')) '_STORED (' CubeName '_SC \'' ToScenarioID '\') = ' CubeName '_SC_N_A_NC_ATT_' &(joinchars (CubeName '_PRT_MEASDIM')) '_STORED')
+   &(joinchars (CubeName '_SC_N_A_NC_ATT_' &(joinchars (CubeName '_PRT_MEASDIM')) '_STORED (' CubeName '_SC \'' ToScenarioID '\') = ' CubeName '_SC_N_A_NC_ATT_' &(joinchars (CubeName '_PRT_MEASDIM')) '_STORED'))
+doend
+blank
+
+" Copy High water mark fourth
+&(joinchars ('lmt ' CubeName '_SC to \'' ToScenarioID '\'')) " Limit scenario
+shw joinchars (tod ' High water mark')
+shw joinchars (CubeName '_SC.' CubeName '_CHG = ' CubeName '_SC.' CubeName '_CHG (' CubeName '_SC \'' FromScenarioID '\')')
+blank
+&(joinchars (CubeName '_SC.' CubeName '_CHG = ' CubeName '_SC.' CubeName '_CHG (' CubeName '_SC \'' FromScenarioID '\')'))
+shw joinchars (tod ': Done.')
+
+" Huh. Done. S..t loads of ampersands and quotes...
+
+return 0
+
+error:
+signal errorname errortext
+return -1

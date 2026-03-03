@@ -1,0 +1,417 @@
+"-------------------------------------------------------------------------------------------------------------
+" Purpose:      Discover basecube dependent override structure (main loop)
+" Argument:     ReportType (integer), 1: Screen - text format, 2: Screen - CSV format
+" Call syntax:  GET_OR_OBJ_MAIN 2
+" Returns:      Override structure related to the basecube
+"               The list is echoed to the standard output (screen) either in text format or
+"               as a comma separated list of columns
+" Prerequisite: An AW with metada objects present must be attached
+" Created by:   C10879
+" Date created: 24/09/2009
+"-------------------------------------------------------------------------------------------------------------
+
+arg _rep_type integer
+
+vrb _thiscube text
+vrb _thismeas text
+
+trap on error noprint
+
+lmt all_cubes to findchars (all_cubes '_SC_N.CUBE') eq 0 and findchars (all_cubes '_SC_VW.CUBE') eq 0 and findchars (all_cubes '_SC_N_A.CUBE') eq 0
+sort all_cubes a all_cubes
+
+if _rep_type eq 2
+then do
+    shw joinchars ('BASE_CUBE,', 'BASE_MEAS,', 'BASE_CUBE_TYPE,', 'OR_TYPE,', 'OR_SUB_TYPE,', 'TOTAL_OR_MEAS,', 'DETAIL_AUDIT_MEAS,', -
+                   'TOTAL_AUDIT_MEAS,', 'VIEW_MEAS,', 'VIEW_MEAS_EQU,', 'SCENARIO_DIM,', 'CHG_DIM,', 'DETAIL_OR_MEAS,', 'COMPOSITE,', 'HWM_REL,', -
+                   'HIGHEST_HWM,', 'SCENARIO')
+doend
+
+for all_cubes
+do
+    lmt all_measures to cube_measures
+    sort all_measures a all_measures
+
+    if _rep_type eq 1
+    then do
+        shw joinchars ('************************* ' extchars (all_cubes, 1, findchars (all_cubes '.') - 1) ' *************************')
+        blank
+    doend
+    for all_measures
+    do
+        _thismeas = extchars (all_measures findchars (all_measures '.') + 1)
+        _thismeas = extchars (_thismeas 1 findchars (_thismeas '.') - 1)
+        _thiscube = extchars (all_cubes 1 findchars (all_measures '.') - 1)        
+        call get_or_obj (_thiscube, _thismeas, _rep_type)
+    doend
+doend
+
+return 0
+
+error:
+return -1
+
+"-------------------------------------------------------------------------------------------------------------
+" Purpose:      Discover basecube dependent override structure
+" Argument:     BaseCube, BaseMeasure, ReportType (integer), 1: Screen - text format, 2: Screen - CSV format
+" Call syntax:  GET_OR_OBJ 'MAF_F' 'MAF' 1
+" Returns:      Override structure related to the basecube
+"               The list is echoed to the standard output (screen) either in text format or
+"               as a comma separated list of columns
+" Prerequisite: An AW with metada objects present must be attached
+" Created by:   C10879
+" Date created: 24/09/2009
+"-------------------------------------------------------------------------------------------------------------
+
+arg _basecube text       " Cube name
+arg _meas text           " Measure name
+arg _rep_type integer    " Report type
+
+vrb _basemeas text       " Holds the source measure's name. Cube name + '_' + measure name + '_STORED'
+vrb _basemeas_frml text  " Holds the source measure formula's name. Cube name + '_' + measure name
+vrb _type integer        " Type of cube in terms of total and detail override cube design. 0 = normal, 1 = detail oride redesigned, 2 = both overrides redesigned
+vrb _btype integer       " Base cube type. 0 = normal, 1 = mini-cube
+vrb _cmp_name text       " Source measure's composite name
+vrb _oridemeas text      " Holds the override total measure's name. Cube name + '_SC_N_OV_' + measure name + '_STORED'
+vrb _changemeas text     " Holds the override component measure's name. Cube name + '_SC_N_NC_' + measure name + '_STORED' NC = New Concept
+vrb _auditmeas text      " Holds the audit measure's name. Cube name + '_SC_N_A_NC_' + measure name + '_STORED' NC = New Concept
+vrb _auditmeasx text     " Old audit structure kept for backward compatibility. Front-end places audit values into that
+vrb _viewmeas text       " Holds the view measure's equation
+vrb _viewmeas2 text      " Holds the view measure's name. Cube name + '_SC_VW'
+vrb _viewmeas_frml text  " Holds the view measure's equation based on the base formula (TOPFRML)
+vrb _chgdim text         " Change dimension (integer dim, sequence of changes)
+vrb _hwm text            " High water mark relation.
+vrb _hwmval integer      " High water mark value. Shows the next available slot to store overrides
+vrb _hhwmval integer     " Highest high water mark
+
+vrb _qdr text            " QDR created dynamically to point to the current change (in the detail override cube)
+vrb _dummy text          " Dummy is dummy (used to overcome a syntax error when logging)
+vrb _sec decimal         " Holds the 'seconds' upon entry this program. Used to calculate elapsed secs
+vrb _nochildren boolean  " Indicates if the override occurred on the last descendants level or not
+vrb _scdim text          " Scenario dimension
+vrb _scval text          " Scenario dimension value
+vrb _hscval text         " Scenario dimension value corresponding to highest high water mark
+vrb _sccomp text         " Custom scenario composite (merge of custom composite and total override composite)
+vrb _isor boolean        " Indicates whether cube is overrideable or not
+vrb _version text        " For mini-cubes, it holds the first version dim value
+
+trap on error noprint
+
+badline      = yes
+naskip       = yes
+naskip2      = yes
+dividebyzero = yes
+
+" Parameter checks
+if not isvalue (all_cubes joinchars (_basecube '.CUBE'))
+then do
+    shw joinchars ('Cube ' _basecube ' does not exist.')
+    signal '-50000' joinchars ('Cube ' _basecube ' does not exist.')
+doend
+
+if not isvalue (all_measures joinchars (_basecube '.' _meas '.MEASURE'))
+then do
+    shw joinchars ('Measure ' _meas ' does not exist.')
+    signal '-50000' joinchars ('Measure ' _meas ' does not exist.')
+doend
+
+" Establish cube type. All cubes except GDF_SMALL and NHH_OUTPUT are of type 0
+_type  = 0
+_btype = 0
+
+if _basecube eq 'GDF_SMALL'
+then do
+    _type  = 1
+    _btype = 1
+doend
+if _basecube eq 'NHH_OUTPUT'
+then do
+    _type  = 2
+    _btype = 1
+doend
+
+" Base cube and measure
+if _btype eq 0
+then do
+    if is.compressed (_basecube)
+    then do
+        _basemeas = joinchars (_basecube '_PRT_TOPVAR (' _basecube '_PRT_MEASDIM \'' _meas '\')')
+        _basemeas_frml = joinchars (_basecube '_PRT_TOPFRML (' _basecube '_PRT_MEASDIM \'' _meas '\')')
+        if not isvalue (&joinchars (_basecube '_PRT_MEASDIM'), _meas)
+        then do
+            _basemeas = joinchars (_basecube '_' _meas)
+            _basemeas_frml = _basemeas
+        doend
+    doend
+    else do
+        _basemeas = joinchars (_basecube '_' _meas '_STORED')
+        _basemeas_frml = joinchars (_basecube '_' _meas)
+        if not exists (_basemeas)
+        then do
+           _basemeas = joinchars (_basecube '_' _meas)
+        doend
+    doend
+doend
+else do
+    if is.compressed (_basecube)
+    then do
+        " Mini-cubes use the version id as prefix
+        _version = &joinchars (_basecube '_VER')
+        _basemeas = joinchars (_basecube '_' _version '_PRT_TOPVAR (' _basecube '_' _version '_PRT_MEASDIM \'' _meas '\')')
+        _basemeas_frml = joinchars (_basecube '_' _version '_PRT_TOPFRML (' _basecube '_' _version '_PRT_MEASDIM \'' _meas '\')')
+        if not isvalue (&joinchars (_basecube '_' _version '_PRT_MEASDIM'), _meas)
+        then do
+            _basemeas = joinchars (_basecube '_' _version '_' _meas)
+            _basemeas_frml = _basemeas
+        doend
+    doend
+    else do
+        _basemeas = joinchars (_basecube '_' _version '_' _meas '_STORED')
+        _basemeas_frml = joinchars (_basecube '_' _version '_' _meas)
+        if not exists (_basemeas)
+        then do
+           _basemeas = joinchars (_basecube '_' _version '_' _meas)
+        doend
+    doend
+doend
+
+" Scenario dimension
+_scdim = joinchars (_basecube '_SC')
+if not exists (_scdim)
+then do
+    "shw joinchars ('Scenario dimension ' _scdim ' does not exist.')
+    _scdim = 'N/A'
+    "signal '-50000' joinchars ('Scenario dimension ' _scdim ' does not exist.')
+doend
+
+" Is there an override structure in place at all or is it a non-overrideable cube?
+if isvalue (all_cubes, joinchars(_basecube '_SC_N.CUBE'))
+then _isor = true
+else _isor = false
+
+" Total Override cube
+if _isor
+then do
+    if is.compressed (joinchars (_basecube '_SC_N'))
+    then do
+        _oridemeas = joinchars (_basecube '_SC_N_PRT_TOPVAR (' _basecube '_SC_N_PRT_MEASDIM \'OV_' _meas '\')')
+    doend
+    else do
+        _oridemeas = joinchars (_basecube '_SC_N_OV_' _meas '_STORED')
+    doend
+doend
+
+" For cube of type 2, the total override measure name is derived from the scenario. TOPVAR is now a formula
+if _type eq 2
+then do
+   if convert (&_scdim text) eq '**NEW**'
+   then do
+      _oridemeas = joinchars (_basecube '_SC_N_PRT_TOPVAR_NEW (' _basecube '_SC_N_PRT_MEASDIM \'OV_' _meas '\')')
+   doend
+   else do
+      _oridemeas = joinchars (_basecube '_SC_N_PRT_TOPVAR_' &_scdim ' (' _basecube '_SC_N_PRT_MEASDIM \'OV_' _meas '\')')
+   doend
+doend
+
+" Audit cube and measure
+_auditmeas = joinchars (_basecube '_SC_N_A_NC_ATT_' _meas '_STORED')
+_auditmeasx = joinchars (_basecube '_SC_N_A_ATT_' _meas '_STORED')
+
+" View cube and measure
+_viewmeas2 = joinchars (_basecube '_SC_VW_' _meas)
+_viewmeas = joinchars ('(' _basemeas ' + ' _oridemeas ')') " This is much much faster this way
+_viewmeas_frml = joinchars ('(' _basemeas_frml ' + ' _oridemeas ')') " This is much much faster this way
+
+if not exists (_viewmeas2)
+then do
+    "shw joinchars ('View measure ' _viewmeas ' does not exist.')
+    _viewmeas = 'N/A'
+    _viewmeas2 = 'N/A'
+    "signal '-50000' joinchars ('View measure ' _viewmeas ' does not exist.')
+doend
+
+" Change dimension
+_chgdim = joinchars (_basecube '_CHG')
+
+" High water mark
+_hwm = joinchars (_basecube '_SC.' _basecube '_CHG')
+
+" Change cube and measure
+" For cube of type 1 and 2, the detail change measure name is derived from the scenario. TOPVAR is now a formula
+if _type gt 0
+then do
+   if convert (&_scdim text) eq '**NEW**'
+   then do
+       _changemeas = joinchars (_basecube '_SC_N_NC_PRT_TOPVAR_NEW (' _basecube '_SC_N_PRT_MEASDIM \'OV_' _meas '\')')
+   doend
+   else do
+       _changemeas = joinchars (_basecube '_SC_N_NC_PRT_TOPVAR_' &_scdim ' (' _basecube '_SC_N_PRT_MEASDIM \'OV_' _meas '\')')
+   doend
+doend
+else do
+   _changemeas = joinchars (_basecube '_SC_N_NC_PRT_TOPVAR (' _basecube '_SC_N_PRT_MEASDIM \'OV_' _meas '\')')
+doend
+
+" QDR that points to the detail change measure's current change dimension slot
+if _type gt 0
+then do
+   if convert (&_scdim text) eq '**NEW**'
+   then do
+      _qdr = joinchars (_basecube '_SC_N_NC_PRT_TOPVAR_NEW (' _basecube '_SC_N_PRT_MEASDIM \'OV_' _meas '\' ' _chgdim ' ' _hwm ')')
+   doend
+   else do
+      _qdr = joinchars (_basecube '_SC_N_NC_PRT_TOPVAR_' &_scdim ' (' _basecube '_SC_N_PRT_MEASDIM \'OV_' _meas '\' ' _chgdim ' ' _hwm ')')
+   doend
+doend
+else do
+   _qdr = joinchars (_basecube '_SC_N_NC_PRT_TOPVAR (' _basecube '_SC_N_PRT_MEASDIM \'OV_' _meas '\' ' _chgdim ' ' _hwm ')')
+doend
+
+" Composites
+" 1. Use base cube's composite or custom composite.
+" 2. If a composite has explicitly been passed in as parameter, use that one
+" 3. If a custom override merge composite exists, use that one
+if is.compressed (_basecube) " Use base cube's composite or custom composite.
+then do
+    _cmp_name = joinchars (_basecube '_CUSTOM_COMPOSITE')
+doend
+else do
+    _cmp_name = joinchars (_basecube '_COMPOSITE')
+doend
+
+if _scdim ne 'N/A'
+then do
+    _sccomp = joinchars (_basecube '_CUST_OV_MERGE_COMP_' &_scdim)
+    _sccomp = changechars (_sccomp '*' '_')
+    if exists (_sccomp)   " If a custom, ov merge scenario composite exists, use that one!
+    then _cmp_name = _sccomp
+doend
+
+" Check existence of override structure elements
+if _isor
+then do
+    if is.compressed (joinchars (_basecube '_SC_N'))
+    then do
+        if not exists (joinchars (_basecube '_SC_N_PRT_TOPVAR'))
+        then do
+            "shw joinchars ('Override measure ' _oridemeas ' does not exist.')
+            _oridemeas = 'N/A'
+            "signal '-50000' joinchars ('Override measure ' _oridemeas ' does not exist.')
+        doend
+    doend
+    else do
+        if not exists (_oridemeas)
+        then do
+            "shw joinchars ('Override measure ' _oridemeas ' does not exist.')
+            _oridemeas = 'N/A'    
+            "signal '-50000' joinchars ('Override measure ' _oridemeas ' does not exist.')
+        doend
+    doend
+doend
+else do
+    _oridemeas = 'N/A'
+doend
+
+if not exists (_auditmeas)
+then do
+    "shw joinchars ('Audit measure ' _auditmeas ' does not exist.')
+    _auditmeas = 'N/A'    
+    "signal '-50000' joinchars ('Audit measure ' _auditmeas ' does not exist.')
+doend
+
+if not exists (_auditmeasx)
+then do
+    "shw joinchars ('Old audit measure ' _auditmeasx ' does not exist.')
+    _auditmeasx = 'N/A'    
+    "signal '-50000' joinchars ('Old audit measure ' _auditmeasx ' does not exist.')
+doend
+
+if not exists (joinchars (_basecube '_SC_N_NC_PRT_TOPVAR'))
+then do
+    "shw joinchars ('Change measure ' _changemeas ' does not exist.')
+    _changemeas = 'N/A'    
+    "signal '-50000' joinchars ('Change measure ' _changemeas ' does not exist.')
+doend
+
+if not exists (_chgdim)
+then do
+    "shw joinchars ('Change dimension ' _chgdim ' does not exist.')
+    _chgdim = 'N/A'
+    "signal '-50000' joinchars ('Change dimension ' _chgdim ' does not exist.')
+doend
+
+if not exists (_hwm)
+then do
+    "shw joinchars ('High water mark measure ' _hwm ' does not exist.')
+    _hwm = 'N/A'
+    "signal '-50000' joinchars ('High water mark measure ' _hwm ' does not exist.')
+doend
+
+" Create report and echo it to the screen
+if _rep_type eq 1
+then do
+    shw joinchars ('Base cube:                ' _basecube)
+    shw joinchars ('Base measure:             ' _basemeas)
+    shw joinchars ('Base cube type:           ' if _btype eq 0 then 'Normal' else if _btype eq 1 then 'Mini-cube' else 'N/A')
+    shw joinchars ('Override type:            ' if _chgdim eq 'N/A' and _isor then '1st generational (SC_N)' else if _chgdim ne 'N/A' then 'New generational (SC_N_NC)' else 'Non-overrideable')
+    shw joinchars ('Override subtype:         ' if _type eq 0 and _isor then 'Normal' else if _type eq 1 and _isor then 'Detail OR mini-cube' else if _type eq 2 and _isor then 'Both detail and total OR mini-cube' else 'N/A')
+    shw joinchars ('Total override measure:   ' _oridemeas)
+    shw joinchars ('Audit measure:            ' _auditmeas)
+    shw joinchars ('Old audit measure:        ' _auditmeasx)
+    shw joinchars ('View measure:             ' _viewmeas2)
+    shw joinchars ('View measure equation:    ' _viewmeas)
+    shw joinchars ('Scenario dimension:       ' _scdim)
+    shw joinchars ('Change dimension:         ' _chgdim)
+    shw joinchars ('Detail override measure:  ' _changemeas)
+    shw joinchars ('Composite:                ' _cmp_name)
+    shw joinchars ('High water mark relation: ' _hwm)
+
+    " Get the highest high water mark across all scenarios    
+    if _scdim ne 'N/A' and _isor and _chgdim ne 'N/A'
+    then do
+        _hhwmval = -1
+        _hscval = 'N/A'
+        for &_scdim
+        do
+            _scval = convert (&_scdim text)        
+            _hwmval = &_hwm
+            if nafill (_hwmval, 0) gt _hhwmval
+            then do
+                _hhwmval = _hwmval
+                _hscval = _scval
+            doend
+        doend
+        shw joinchars ('Highest high water mark:  ' if _hhwmval eq -1 then 'N/A' else convert (_hhwmval, text))
+        shw joinchars ('Scenario:                 ' _hscval)     
+    doend
+    blank
+doend
+else do
+    " Generate comma separated list of values as output
+    _hhwmval = -1
+    _hscval = 'N/A'
+    if _scdim ne 'N/A' and _isor and _chgdim ne 'N/A'
+    then do
+        for &_scdim
+        do
+            _scval = convert (&_scdim text)        
+            _hwmval = &_hwm
+            if nafill (_hwmval, 0) gt _hhwmval
+            then do
+                _hhwmval = _hwmval
+                _hscval = _scval
+            doend
+        doend
+    doend
+    shw joinchars (_basecube, ',' _basemeas, ',' if _btype eq 0 then 'Normal' else if _btype eq 1 then 'Mini-cube' else 'N/A', ',' -
+                   if _chgdim eq 'N/A' and _isor then '1st generational (SC_N)' else if _chgdim ne 'N/A' then 'New generational (SC_N_NC)' else 'Non-overrideable', ',' -
+                   if _type eq 0 and _isor then 'Normal' else if _type eq 1 and _isor then 'Detail OR mini-cube' else if _type eq 2 and _isor then 'Both detail and total OR mini-cube' else 'N/A', ',' -
+                   _oridemeas, ',' _auditmeas, ',' _auditmeasx, ',' _viewmeas2, ',' _viewmeas, ',' _scdim, ',' _chgdim, ',' _changemeas, ',' _cmp_name, ',' _hwm, ',' -
+                   if _hhwmval eq -1 then 'N/A' else convert (_hhwmval, text), ',' _hscval)                  
+doend
+
+return 0
+
+" Error handling
+error:
+return -1

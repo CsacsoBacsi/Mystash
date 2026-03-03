@@ -1,0 +1,68 @@
+" ------------------------------------------------------------------------------
+" Program: PRG_DLT_FCST_VER
+" Params: Cube, Version, CubeType
+" Return value: OK if no error occurred, Errortext otherwise
+" Example: shw PRG_DLT_FCST_VER ('DM_SCALED_FCST', '1075', 0)
+" Created by: Csaba Riedlinger
+" Date: 21th of July, 2008
+" Purpose: To delete an existing fcst version and dependent scenarios from a cube of type 0 (standard override structure)
+"          The program deletes data the total, detail override structure and the base cube is associated with
+" Modified by/on:
+
+arg _cube           text    " Cube name
+arg _ver_id         text    " Version id
+arg _type           integer " Cube type: 0, 1, or 2
+
+vrb _part_templ     text    " Partition template
+vrb _partby         text    " Partitioning dimension
+vrb _part           text    " Partition that belongs to scenario value
+vrb _relation       text    " Relation that releates a version to one or many scenarios
+vrb _scen_id        text    " Holds the name of a particular scenario that is related to version
+vrb i               integer " Index variable
+
+trap on error noprint
+oknullstatus = yes
+
+" Check parameter
+if not isvalue (&(joinchars (_cube '_VER')), _ver_id)
+then do
+    return joinchars ('ERROR: Version ' _ver_id ' is not a valid dimension value in dimension SCALED_FCST_VER')
+doend
+
+" Set local variables
+_part_templ = joinchars (_cube '_PARTITION_TEMPLATE')
+_partby = obj (partby _part_templ)
+
+lmt &(joinchars (_cube '_VER')) to _ver_id
+_relation = joinchars (_cube '_SC.SCALED_FCST_VER')
+lmt &(joinchars (_cube '_SC')) to &_relation eq _ver_id
+
+_scen_id = values (&(joinchars (_cube '_SC')))
+
+if _scen_id eq na " No scenario is associated with this version
+then goto veronly
+
+" Delete override data associated with each and every scenario related to the version to be deleted
+i = 1
+while i le numlines (_scen_id)
+do
+     " Delete from Total override
+     if part_del (joinchars (_cube, '_SC_N') , _type, extlines (_scen_id, i, 1), false) ne 0 " Delete scenario value from dimension
+     then return joinchars (errorname ': ' errortext)
+
+     " Delete from Detail override
+     if part_del (joinchars (_cube, '_SC_N_NC') , _type, extlines (_scen_id, i, 1), true) ne 0 " Delete scenario value from dimension
+     then return joinchars (errorname ': ' errortext)
+
+     i = i + 1
+doend
+
+veronly:
+
+" Delete base version
+if part_del (_cube, 0, _ver_id, true) ne 0 " Do not delete version value from dimension
+then return joinchars (errorname ': ' errortext)
+else return 'OK'
+
+error:
+return joinchars (errorname ': ' errortext)

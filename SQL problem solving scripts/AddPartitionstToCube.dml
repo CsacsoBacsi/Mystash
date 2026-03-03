@@ -1,0 +1,45 @@
+" Arguments
+arg p_object text
+
+" Local variables
+vrb v_plist_var text
+vrb v_plist_templ text
+vrb v_obj_cmd text
+vrb v_exc_cmd text
+
+vrb i integer
+vrb v_found integer
+
+v_obj_cmd = joinchars ('obj (partnames, \'' p_object '_PRT_TOPVAR\')')
+"shw joinchars ('Command executing: ' v_obj_cmd)
+v_plist_var = &v_obj_cmd
+
+v_obj_cmd = joinchars ('obj (partnames, \'' p_object '_PARTITION_TEMPLATE\')')
+"shw joinchars ('Command executing: ' v_obj_cmd)
+v_plist_templ = &v_obj_cmd
+
+"rpr v_plist_var
+"rpr v_plist_templ
+
+i = 1
+while i le numlines (v_plist_var)
+do
+   v_found = findlines (v_plist_templ extlines (v_plist_var, i, 1))
+   if v_found gt 0
+   then do
+       v_plist_templ = remlines (v_plist_templ, v_found)
+   doend
+
+   i = i + 1
+doend
+
+"rpr v_plist_templ
+
+i = 1
+while i le numlines (v_plist_templ)
+do
+    v_exc_cmd = joinchars ('chgdfn ' p_object '_PRT_TOPVAR ADD (PARTITION ' extlines (v_plist_templ, i, 1) ')')
+    shw joinchars ('Executing command: ' v_exc_cmd)
+    &v_exc_cmd
+    i = i + 1
+doend

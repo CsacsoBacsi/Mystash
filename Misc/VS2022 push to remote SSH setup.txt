@@ -1,0 +1,24 @@
+# Add an SSH key to a GitHub repository. One key one repo!
+
+# Generate private/public key
+ssh-keygen -t ed25519 -C "csaba.riedlinger@gmail.com"
+# Passphrase: Csacso
+# File name to save the keys: vs2022. This will create vs2022 (private) and vs2022.pub (public) keys
+# Move both files under C:/Users/Csacso/.ssh
+
+# start the ssh-agent in the background (PowerShell run as Administrator)
+Get-Service -Name ssh-agent | Set-Service -StartupType Manual
+Start-Service ssh-agent
+
+# Add the private key to the SSH agent (PowerShell normal)
+ssh-add C:/Users/Csacso/.ssh/vs2022
+
+# Add the public key to your account on GitHub
+# Choose your repository then Settings -> Deploy keys
+# Paste the content of the .pub file into the window
+
+# Finally, to ensure Git uses the agent where you've stored your credentials, force Git to use the system's SSH binary by running in a cmd window:
+git config --global core.sshCommand "C:/Windows/System32/OpenSSH/ssh.exe"
+
+# In Visual Studio, Git Repository Settings -> Email -> csaba.riedlinger@gmail.com
+# Remotes fetch and push: git@github.com:CsacsoBacsi/VS2022.git

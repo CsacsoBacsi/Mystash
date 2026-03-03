@@ -1,0 +1,83 @@
+vrb _fcst_ver text
+vrb _cons_date text
+vrb _ren_month text
+vrb _site_id text
+vrb _sector text
+vrb _prop text
+vrb _gas_lic text
+vrb _ldz text
+vrb _euc text
+
+trap on error noprint
+
+errortext = ''
+
+sql declare c1 cursor for -
+select -
+GDF_B2B.GDF_B2B_V_DM_FCAST.FORECAST_VERSION, -
+GDF_B2B.GDF_B2B_V_DM_FCAST.CONS_DATE, -
+GDF_B2B.GDF_B2B_V_DM_FCAST.RENEWAL_MONTH, -
+GDF_B2B.GDF_B2B_V_DM_FCAST.SITE_ID, -
+GDF_B2B.GDF_B2B_V_DM_FCAST.SECTOR, -
+GDF_B2B.GDF_B2B_V_DM_FCAST.PROPOSITION, -
+GDF_B2B.GDF_B2B_V_DM_FCAST.GAS_LICENCE, -
+GDF_B2B.GDF_B2B_V_DM_FCAST.LDZ, -
+GDF_B2B.GDF_B2B_V_DM_FCAST.EUC -
+from GDF_B2B.GDF_B2B_V_DM_FCAST
+
+sql open c1
+
+if sqlcode ne 0
+then goto error
+
+while sqlcode eq 0
+do
+   sql fetch c1 into :_fcst_ver, :_cons_date, :_ren_month, :_site_id, :_sector, :_prop, :_gas_lic, :_ldz, :_euc
+   if not isvalue (scaled_fcst_ver_base_surr _fcst_ver)
+   then do
+      shw joinchars ('Fcst ver problem: ' _fcst_ver, ' ' _cons_date, ' ' _ren_month, ' ' _site_id ' ' _sector ' ' _prop ' ' _gas_lic ' ' _ldz ' ' _euc)
+      break
+   doend
+   if not isvalue (time_day_surr _cons_date)
+   then do
+      shw joinchars ('Cons date problem: ' _fcst_ver, ' ' _cons_date, ' ' _ren_month, ' ' _site_id ' ' _sector ' ' _prop ' ' _gas_lic ' ' _ldz ' ' _euc)
+      break
+   doend
+   if not isvalue (renewal_month_base_surr _ren_month)
+   then do
+      shw joinchars ('Renewal month problem: ' _fcst_ver, ' ' _cons_date, ' ' _ren_month, ' ' _site_id ' ' _sector ' ' _prop ' ' _gas_lic ' ' _ldz ' ' _euc)
+      break
+   doend
+   if not isvalue (dm_site_base_surr _site_id)
+   then do
+      shw joinchars ('DM site problem: ' _fcst_ver, ' ' _cons_date, ' ' _ren_month, ' ' _site_id ' ' _sector ' ' _prop ' ' _gas_lic ' ' _ldz ' ' _euc)
+      break
+   doend
+   if not isvalue (business_structure_sector_surr _sector)
+   then do
+      shw joinchars ('DM site problem: ' _fcst_ver, ' ' _cons_date, ' ' _ren_month, ' ' _site_id ' ' _sector ' ' _prop ' ' _gas_lic ' ' _ldz ' ' _euc)
+      break
+   doend
+   if not isvalue (gas_product_proposition_surr _prop)
+   then do
+      shw joinchars ('Proposition problem: ' _fcst_ver, ' ' _cons_date, ' ' _ren_month, ' ' _site_id ' ' _sector ' ' _prop ' ' _gas_lic ' ' _ldz ' ' _euc)
+      break
+   doend
+   if not isvalue (gas_licence_base_surr _gas_lic)
+   then do
+      shw joinchars ('Gas lic problem: ' _fcst_ver, ' ' _cons_date, ' ' _ren_month, ' ' _site_id ' ' _sector ' ' _prop ' ' _gas_lic ' ' _ldz ' ' _euc)
+      break
+   doend
+   if not isvalue (ldz_ldz_surr _ldz)
+   then do
+      shw joinchars ('LDZ problem: ' _fcst_ver, ' ' _cons_date, ' ' _ren_month, ' ' _site_id ' ' _sector ' ' _prop ' ' _gas_lic ' ' _ldz ' ' _euc)
+      break
+   doend
+doend
+
+sql close c1
+
+error:
+shw errortext
+shw sqlerrm
+

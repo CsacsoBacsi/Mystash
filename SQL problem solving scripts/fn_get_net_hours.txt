@@ -1,0 +1,119 @@
+FUNCTION fn_get_net_hours (
+         p_start_date DATE,
+         p_curr_date  DATE) RETURN NUMBER
+IS
+
+
+v_no_we       NUMBER ; -- Number of weekends between start and current date exclusive
+v_no_wd       NUMBER ; -- Number of weekdays between start and current date exclusive
+v_is_curr_we  NUMBER ; -- Is current date a weekend? 
+v_is_start_we NUMBER ; -- Is start date a weekend?
+v_hour_diff   NUMBER ; -- Stores the number of hours between start date and current date
+v_bh          NUMBER ; -- Is it a bank holiday? 
+
+BEGIN
+   
+    v_no_wd := 0 ;
+    v_no_we := 0 ;
+
+    FOR c1_rec IN (SELECT ACTUAL_DATE 
+                   FROM TIME 
+                   WHERE ACTUAL_DATE     < TRUNC (p_curr_date) 
+                         AND ACTUAL_DATE > TRUNC (p_start_date)) 
+    LOOP
+
+        SELECT COUNT (*) INTO v_bh
+        FROM   BANK_HOLIDAY b 
+        WHERE  b.HOLIDAY_DATE = c1_rec.ACTUAL_DATE ;
+
+        IF TO_CHAR (cal_date, 'D') IN (6, 7) OR v_bh > 0
+        THEN
+
+            v_no_we := v_no_we + 1 ;
+            
+        ELSE
+        
+            v_no_wd := v_no_wd + 1 ;
+            
+        END IF ;       
+        
+    END LOOP ;
+    
+/*    WITH base_query AS (
+        SELECT * 
+        FROM   (SELECT 
+                       TRUNC (p_start_date) + LEVEL - 1 CAL_DATE,
+                       LEVEL
+                FROM   DUAL  
+                CONNECT BY LEVEL <= v_days_diff) 
+        WHERE cal_date     < TRUNC (p_curr_date) 
+              AND cal_date > TRUNC (p_start_date)
+    ),
+    no_we AS (
+        SELECT COUNT (*) as V_NO_WE
+        FROM   base_query     
+        WHERE  (TO_CHAR (cal_date, 'D') IN (6, 7) OR EXISTS (SELECT NULL FROM BANK_HOLIDAY b WHERE b.HOLIDAY_DATE = cal_date))
+    ),
+--    dbms_output.put_line ('Number of weekends between (exclusive): ' || v_no_we) ;  
+    no_wd AS (
+        SELECT COUNT (*) as V_NO_WD
+        FROM   base_query  
+        WHERE  (TO_CHAR (cal_date, 'D') NOT IN (6, 7) AND NOT EXISTS (SELECT NULL FROM BANK_HOLIDAY b WHERE b.HOLIDAY_DATE = cal_date))
+    )
+    SELECT a.V_NO_WE, b.V_NO_WD INTO v_no_we, v_no_wd
+    FROM   no_we a, no_wd b ; */
+--    dbms_output.put_line ('Number of weekdays between (exclusive): ' || v_no_wd) ;
+    
+    SELECT DECODE (TO_CHAR (p_start_date, 'D'), 6, 1, 7, 1, 0) INTO v_is_start_we 
+    FROM   DUAL ;
+    
+    IF v_is_start_we = 0
+    THEN
+    
+        SELECT COUNT (*) INTO v_is_start_we
+        FROM   BANK_HOLIDAY
+        WHERE  HOLIDAY_DATE = p_start_date ;
+        
+    END IF ;
+
+    SELECT DECODE (TO_CHAR (p_curr_date, 'D'), 6, 1, 7, 1, 0) INTO v_is_curr_we 
+    FROM   DUAL ;
+
+    IF v_is_curr_we = 0
+    THEN
+    
+        SELECT COUNT (*) INTO v_is_curr_we
+        FROM   BANK_HOLIDAY
+        WHERE  HOLIDAY_DATE = p_curr_date ;
+        
+    END IF ;
+
+--    dbms_output.put_line ('Does start date fall on weekend or bank holiday? ' || v_is_start_we) ;
+--    dbms_output.put_line ('Does current date fall on weekend or bank holiday? ' || v_is_curr_we) ;    
+
+    SELECT (p_curr_date - p_start_date) * 24 INTO v_hour_diff
+    FROM DUAL ;
+      
+--    dbms_output.put_line ('Total difference in hours: ' || v_hour_diff) ;
+    
+    IF v_is_start_we = 0 AND v_is_curr_we = 0 -- Both are weekdays
+    THEN  
+        v_hour_diff := v_hour_diff - (v_no_we * 24) ;
+    ELSIF v_is_start_we = 1 AND v_is_curr_we = 1 -- Both are weekends/bank holidays
+    THEN
+        v_hour_diff := v_no_wd * 24  ;
+    ELSIF v_is_start_we = 1 AND v_is_curr_we = 0 -- Start is a weekend/bank holiday, current date is neither
+    THEN
+        v_hour_diff := v_hour_diff - (v_no_we * 24) ;
+        v_hour_diff := v_hour_diff - TO_CHAR (p_start_date, 'HH24') ;         
+    ELSE -- Start is not a weekend/bank holiday but current date is
+        v_hour_diff := v_hour_diff - (v_no_we * 24) ;
+        v_hour_diff := v_hour_diff - TO_CHAR (p_curr_date, 'HH24') ;
+    END IF ;
+
+--    dbms_output.put_line ('Final result (less WE and BH): ' || v_hour_diff) ;
+    
+    RETURN v_hour_diff ;
+    
+END fn_get_net_hours ;
+

@@ -1,0 +1,74 @@
+{
+  "Version": 1,
+  "WorkspaceRootPath": "G:\\Visual Studio\\VS2019Projects\\Tutorial\\ASM\\ASMTut\\",
+  "Documents": [
+    {
+      "AbsoluteMoniker": "D:0:0:{0B0E93A9-437F-48D3-A863-8738A72543F4}|ASMTut\\ASMTut.vcxproj|G:\\Visual Studio\\VS2019Projects\\Tutorial\\ASM\\ASMTut\\ASMTut\\Win64API.asm||{8B382828-6202-11D1-8870-0000F87579D2}",
+      "RelativeMoniker": "D:0:0:{0B0E93A9-437F-48D3-A863-8738A72543F4}|ASMTut\\ASMTut.vcxproj|solutionrelative:ASMTut\\Win64API.asm||{8B382828-6202-11D1-8870-0000F87579D2}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{0B0E93A9-437F-48D3-A863-8738A72543F4}|ASMTut\\ASMTut.vcxproj|G:\\Visual Studio\\VS2019Projects\\Tutorial\\ASM\\ASMTut\\ASMTut\\CppCode.cpp||{D0E1A5C6-B359-4E41-9B60-3365922C2A22}",
+      "RelativeMoniker": "D:0:0:{0B0E93A9-437F-48D3-A863-8738A72543F4}|ASMTut\\ASMTut.vcxproj|solutionrelative:ASMTut\\CppCode.cpp||{D0E1A5C6-B359-4E41-9B60-3365922C2A22}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{0B0E93A9-437F-48D3-A863-8738A72543F4}|ASMTut\\ASMTut.vcxproj|G:\\Visual Studio\\VS2019Projects\\Tutorial\\ASM\\ASMTut\\ASMTut\\AsmCode.asm||{8B382828-6202-11D1-8870-0000F87579D2}",
+      "RelativeMoniker": "D:0:0:{0B0E93A9-437F-48D3-A863-8738A72543F4}|ASMTut\\ASMTut.vcxproj|solutionrelative:ASMTut\\AsmCode.asm||{8B382828-6202-11D1-8870-0000F87579D2}"
+    }
+  ],
+  "DocumentGroupContainers": [
+    {
+      "Orientation": 0,
+      "VerticalTabListWidth": 256,
+      "DocumentGroups": [
+        {
+          "DockedWidth": 200,
+          "SelectedChildIndex": 1,
+          "Children": [
+            {
+              "$type": "Bookmark",
+              "Name": "ST:0:0:{d78612c7-9962-4b83-95d9-268046dad23a}"
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 0,
+              "Title": "Win64API.asm",
+              "DocumentMoniker": "G:\\Visual Studio\\VS2019Projects\\Tutorial\\ASM\\ASMTut\\ASMTut\\Win64API.asm",
+              "RelativeDocumentMoniker": "ASMTut\\Win64API.asm",
+              "ToolTip": "G:\\Visual Studio\\VS2019Projects\\Tutorial\\ASM\\ASMTut\\ASMTut\\Win64API.asm",
+              "RelativeToolTip": "ASMTut\\Win64API.asm",
+              "ViewState": "AgIAAJAAAAAAAAAAAAAwwKUAAAAAAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.001001|",
+              "WhenOpened": "2025-12-30T11:15:05.795Z",
+              "EditorCaption": ""
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 2,
+              "Title": "AsmCode.asm",
+              "DocumentMoniker": "G:\\Visual Studio\\VS2019Projects\\Tutorial\\ASM\\ASMTut\\ASMTut\\AsmCode.asm",
+              "RelativeDocumentMoniker": "ASMTut\\AsmCode.asm",
+              "ToolTip": "G:\\Visual Studio\\VS2019Projects\\Tutorial\\ASM\\ASMTut\\ASMTut\\AsmCode.asm",
+              "RelativeToolTip": "ASMTut\\AsmCode.asm",
+              "ViewState": "AgIAAGcAAAAAAAAAAAAwwMAAAAABAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.001001|",
+              "WhenOpened": "2025-12-15T08:44:37.463Z"
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 1,
+              "Title": "CppCode.cpp",
+              "DocumentMoniker": "G:\\Visual Studio\\VS2019Projects\\Tutorial\\ASM\\ASMTut\\ASMTut\\CppCode.cpp",
+              "RelativeDocumentMoniker": "ASMTut\\CppCode.cpp",
+              "ToolTip": "G:\\Visual Studio\\VS2019Projects\\Tutorial\\ASM\\ASMTut\\ASMTut\\CppCode.cpp",
+              "RelativeToolTip": "ASMTut\\CppCode.cpp",
+              "ViewState": "AgIAABgAAAAAAAAAAAAlwC0AAAAAAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000677|",
+              "WhenOpened": "2025-12-15T08:44:27.988Z",
+              "EditorCaption": ""
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

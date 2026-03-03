@@ -1,0 +1,65 @@
+arg _scenid integer " Scenario id
+
+vrb _errortext text
+vrb _to_process integer
+vrb _loaded integer
+
+trap on HADERROR noprint
+
+shw tod
+
+_to_process = 1000000000
+
+sql declare c1 cursor for -
+select TIME_ID, -
+       PROPOSITION_ID, -
+       SECTOR, -
+       ELEC_LICENCE, -
+       GSP_GROUP_ID, -
+       PROFILE_CLASS, -
+       VOLUME, -
+       MSID_COUNT -
+from   EDF_NHH.VW_ECNS_DATA_MUNGE -
+where  SCENARIO_ID = 10179
+
+sql open c1
+if sqlcode ne 0
+then do
+       _errortext =  SQLERRM
+       goto HADERROR
+doend
+
+sql import c1 :_to_process :_loaded into -
+:MATCHSKIPERR TIME_DAY_SURR -
+:MATCHSKIPERR ELEC_PRODUCT_PROPOSITION_SURR -
+:MATCHSKIPERR BUSINESS_STRUCTURE_SECTOR_SURR -
+:MATCHSKIPERR ELEC_LICENCE_BASE_SURR -
+:MATCHSKIPERR GSP_GROUP_ID_BASE_SURR -
+:MATCHSKIPERR PROFILE_CLASS_BASE_SURR -
+:ECNS_PRT_TOPVAR_10179 (ECNS_PRT_MEASDIM 'VOLUME') -
+:ECNS_PRT_TOPVAR_10179 (ECNS_PRT_MEASDIM 'MSID_COUNT')
+
+if sqlcode lt 0
+then do
+       _errortext =  SQLERRM
+       goto HADERROR
+doend
+
+sql close c1
+sql cleanup
+
+shw tod
+shw _loaded
+
+upd
+cmm
+
+return 0
+
+HADERROR:
+trap on NOERR1 noprint
+sql close c1
+
+NOERR1:
+trap off
+sql cleanup

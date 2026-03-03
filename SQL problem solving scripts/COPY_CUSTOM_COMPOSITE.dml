@@ -1,0 +1,24 @@
+" ------------------------------------------------------------------------------
+" Program: COPY_PARTITION_COMPOSITE
+" Params:  target - target composite name
+"          source - name of the custom composite to copy tuples from
+" Returns: Nothing
+" Created by: C10879
+" Date:    Unknown
+" Purpose:
+"
+" Modified by/on/reason:
+"
+" ------------------------------------------------------------------------------
+
+arg _target text   " Target composite name
+arg _source text  " Custom composite name
+
+if exists (_target)
+then do
+  &joinchars('dlt ' _target)
+doend
+
+&joinchars ('copydfn ' _target ' ' _source)
+
+&joinchars ('mnt ' _target ' merge ' _source)

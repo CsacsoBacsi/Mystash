@@ -1,0 +1,164 @@
+<Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003" ToolsVersion="4.0">
+  <PropertyGroup>
+    <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
+    <SchemaVersion>2.0</SchemaVersion>
+    <ProjectGuid>2f70e650-d043-4fa8-9f32-1dcc660b2181</ProjectGuid>
+    <ProjectHome>
+    </ProjectHome>
+    <StartupFile>Closure.py</StartupFile>
+    <SearchPath>..\PythonTutorial</SearchPath>
+    <WorkingDirectory>.</WorkingDirectory>
+    <OutputPath>.</OutputPath>
+    <Name>PythonTutorial</Name>
+    <RootNamespace>PythonTutorial</RootNamespace>
+    <LaunchProvider>Standard Python launcher</LaunchProvider>
+    <CommandLineArguments>
+    </CommandLineArguments>
+    <EnableNativeCodeDebugging>False</EnableNativeCodeDebugging>
+    <IsWindowsApplication>True</IsWindowsApplication>
+    <InterpreterId>Global|PythonCore|3.11</InterpreterId>
+    <InterpreterPath>D:\Apps\Python3119\python.exe</InterpreterPath>
+  </PropertyGroup>
+  <PropertyGroup Condition=" '$(Configuration)' == 'Debug' ">
+    <DebugSymbols>true</DebugSymbols>
+    <EnableUnmanagedDebugging>false</EnableUnmanagedDebugging>
+  </PropertyGroup>
+  <PropertyGroup Condition=" '$(Configuration)' == 'Release' ">
+    <DebugSymbols>true</DebugSymbols>
+    <EnableUnmanagedDebugging>false</EnableUnmanagedDebugging>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="Closure.py" />
+    <Compile Include="Arguments.py">
+      <SubType>Code</SubType>
+    </Compile>
+    <Compile Include="Classes.py">
+      <SubType>Code</SubType>
+    </Compile>
+    <Compile Include="Date-time.py">
+      <SubType>Code</SubType>
+    </Compile>
+    <Compile Include="Decorators.py">
+      <SubType>Code</SubType>
+    </Compile>
+    <Compile Include="Dictionaries.py">
+      <SubType>Code</SubType>
+    </Compile>
+    <Compile Include="Dictionary-comprehension.py">
+      <SubType>Code</SubType>
+    </Compile>
+    <Compile Include="Files.py">
+      <SubType>Code</SubType>
+    </Compile>
+    <Compile Include="Functions.py">
+      <SubType>Code</SubType>
+    </Compile>
+    <Compile Include="General-Python.py">
+      <SubType>Code</SubType>
+    </Compile>
+    <Compile Include="Iterables-generators.py">
+      <SubType>Code</SubType>
+    </Compile>
+    <Compile Include="JSON.py">
+      <SubType>Code</SubType>
+    </Compile>
+    <Compile Include="Lambda-map-filter-reduce.py">
+      <SubType>Code</SubType>
+    </Compile>
+    <Compile Include="List-comprehension.py">
+      <SubType>Code</SubType>
+    </Compile>
+    <Compile Include="Lists-tuples.py">
+      <SubType>Code</SubType>
+    </Compile>
+    <Compile Include="Local-global.py">
+      <SubType>Code</SubType>
+    </Compile>
+    <Compile Include="Message-box.py">
+      <SubType>Code</SubType>
+    </Compile>
+    <Compile Include="Mymath.py" />
+    <Compile Include="Mypack\a.py">
+      <SubType>Code</SubType>
+    </Compile>
+    <Compile Include="Mypack\b.py">
+      <SubType>Code</SubType>
+    </Compile>
+    <Compile Include="Mypack\sub1\a.py">
+      <SubType>Code</SubType>
+    </Compile>
+    <Compile Include="Mypack\sub1\b.py">
+      <SubType>Code</SubType>
+    </Compile>
+    <Compile Include="Mypack\sub1\__init__.py">
+      <SubType>Code</SubType>
+    </Compile>
+    <Compile Include="Mypack\__init__.py">
+      <SubType>Code</SubType>
+    </Compile>
+    <Compile Include="Oracle.py">
+      <SubType>Code</SubType>
+    </Compile>
+    <Compile Include="Packages-modules.py">
+      <SubType>Code</SubType>
+    </Compile>
+    <Compile Include="Partial.py" />
+    <Compile Include="PolarsTut\Basics.py" />
+    <Compile Include="PolarsTut\Concepts.py" />
+    <Compile Include="PolarsTut\Contexts.py" />
+    <Compile Include="PolarsTut\Delta-Parquet.py" />
+    <Compile Include="PolarsTut\LazyAPI.py" />
+    <Compile Include="PolarsTut\Sorting.py" />
+    <Compile Include="PolarsTut\Windowing.py" />
+    <Compile Include="Printing.py">
+      <SubType>Code</SubType>
+    </Compile>
+    <Compile Include="Recursion.py">
+      <SubType>Code</SubType>
+    </Compile>
+    <Compile Include="Sets.py">
+      <SubType>Code</SubType>
+    </Compile>
+    <Compile Include="Shallow-deep-copy.py">
+      <SubType>Code</SubType>
+    </Compile>
+    <Compile Include="Threading.py">
+      <SubType>Code</SubType>
+    </Compile>
+    <Compile Include="Typer.py" />
+    <Compile Include="TyperCaller.py" />
+    <Compile Include="XML.py">
+      <SubType>Code</SubType>
+    </Compile>
+    <Compile Include="Zip.py">
+      <SubType>Code</SubType>
+    </Compile>
+  </ItemGroup>
+  <ItemGroup>
+    <Folder Include="Mypack\" />
+    <Folder Include="Mypack\sub1\" />
+    <Folder Include="PolarsTut\" />
+    <Folder Include="PolarsTut\CSV\" />
+    <Folder Include="PolarsTut\Delta\" />
+    <Folder Include="PolarsTut\Parquet\" />
+  </ItemGroup>
+  <ItemGroup>
+    <Content Include="PolarsTut\CSV\monopoly_props_groups.csv" />
+    <Content Include="PolarsTut\CSV\monopoly_props_prices.csv" />
+    <Content Include="PolarsTut\CSV\iris.csv" />
+    <Content Include="PolarsTut\Joins-Concat.py" />
+    <Content Include="PolarsTut\CSV\my_long_file.csv" />
+  </ItemGroup>
+  <ItemGroup>
+    <InterpreterReference Include="Global|PythonCore|3.11" />
+  </ItemGroup>
+  <Import Project="$(MSBuildExtensionsPath32)\Microsoft\VisualStudio\v$(VisualStudioVersion)\Python Tools\Microsoft.PythonTools.targets" />
+  <!-- Uncomment the CoreCompile target to enable the Build command in
+       Visual Studio and specify your pre- and post-build commands in
+       the BeforeBuild and AfterBuild targets below. -->
+  <!--<Target Name="CoreCompile" />-->
+  <Target Name="BeforeBuild">
+  </Target>
+  <Target Name="AfterBuild">
+  </Target>
+</Project>

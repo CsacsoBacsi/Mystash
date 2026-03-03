@@ -1,0 +1,849 @@
+" ------------------------------------------------------------------------------
+" Program: _ALC_MC
+" Params: CubeName, Version, Type, MeasureName, AllocMethod, AllocateToAll, MultipleOverride, Composite, UseView, LogON/OFF - not used, GranularCube, Measure
+" Example: shw _alc ('NHH_OUTPUT', 'N20067', 2, 'FLAT', 'PROP', false, true, na, false, false, na, na)
+" Created by: Csaba Riedlinger
+" Date: 31st of Oct, 2008
+" Purpose: To allocate values across multiple dimensions down the hierarchies directly to the last descendants using mini base cubes
+"          This DML behaves the same way as _ALC except that it considers a mini-cube as its base cube
+"          The code is generic however the following rules apply:
+"          1. A custom defined granular published cube exists and has a scenario dim that is limited to a single member prior to calling this program
+"          2. If the less granular cube is partitioned, a global composite exists (CUSTOM_COMPOSITE) and is populated
+"          3. All dimensions are limited to point to the value to be allocated
+"          4. Since values are allocated down to the last descendants, intermediate levels' values must be aggregated post allocation
+"          5. Partition template for _changemeas contains new partition for new scenario and high water mark is set/initialized to 1
+"          6. Change dimension, new audit structure and override cube to hold details are all in place
+"          7. Neither the base measure's view nor the override measure's view's equations do not contain custom elements
+"
+" Modified by/on: 
+"
+" ------------------------------------------------------------------------------
+
+arg _basecube text       " Cube name
+arg _version  text       " Denoting the mini cube
+arg _type integer        " Type of cube in terms of total and detail override cube design. 0 = normal, 1 = detail oride redesigned, 2 = both overrides redesigned
+arg _meas text           " Measure name
+arg _method text         " Alloc method: EVEN, COPY, PROP, ZERO. Default: do not alloc (DUMMY)
+arg _newbool boolean     " If True, all cells on lowest level will get values allocated. If False, only touples with non-NA values get values allocated
+arg _moride boolean      " Boolean to indicate whether multiple override of the same cell within the scneraio is allowed
+arg _composite text      " Normally, the base cube's composite is used for looping however this can be overridden
+arg _useview boolean     " Normally add base to override for performance but use VW formula if this is true
+arg _log boolean         " Log ON or OFF. A directory object in Oracle must be set and the CDA command must be issued prior to calling this program to enable logging
+arg _gran_cube text      " Optional. Granular cube's name e.g. NHH_E_GRAN_CONS.
+arg _gran_meas text      " Optional. Granular measure's name e.g. CON
+
+vrb _basemeas text       " Holds the source measure's name. Cube name + '_' + version + '_' + measure name + '_STORED'
+vrb _basemeas_frml text  " Holds the source measure formula's name. Cube name + '_' version + '_' + measure name
+vrb _cmp_name text       " Source measure's composite name
+vrb _oridemeas text      " Holds the override total measure's name. Cube name + '_SC_N_OV_' + measure name + '_STORED'
+vrb _changemeas text     " Holds the override component measure's name. Cube name + '_SC_N_NC_' + measure name + '_STORED' NC = New Concept
+vrb _auditmeas text      " Holds the audit measure's name. Cube name + '_SC_N_A_NC_' + measure name + '_STORED' NC = New Concept
+vrb _auditmeasx text     " Old audit structure kept for backward compatibility. Front-end places audit values into that
+vrb _viewmeas text       " Holds the view measure's equation
+vrb _viewmeas2 text      " Holds the view measure's name. Cube name + '_SC_VW'
+vrb _viewmeas_frml text  " Holds the view measure's equation based on the base formula (TOPFRML)
+vrb _chgdim text         " Change dimension (integer dim, sequence of changes)
+vrb _hwm text            " High water mark. Shows the next available slot to store overrides
+vrb _granmeas text       " Granular stored measure e.g. NHH_E_GRAN_CONS_CON_STORED
+vrb _gran_ov text        " Granular override stored (published) measure e.g. NHH_E_GRAN_CONS_PUB_CON_STORED
+vrb _gran_view text      " Granular source overlayed by override cube e.g. NHH_E_GRAN_CONS_PUB_VW_CON
+vrb _gran_comp text      " Granular measure's composite e.g. NHH_E_GRAN_CONS_COMPOSITE
+vrb _gran_p_comp text    " Granular override stored (published) cube's composite e.g. NHH_E_GRAN_CONS_PUB_COMPOSITE
+
+vrb _dims text           " Holds all base dimensions of the measure
+vrb _dfndims text        " Holds all dimensions of the measure (composite)
+vrb _thisdim text        " Holds the name of the current dimension the operation is working on as looping over all dims
+vrb _numdims integer     " Stored the number of dimensions the measure has. Used during looping over all dims
+vrb _oridevalue decimal  " The value to be allocated. All dims are limited to a single member so it equals to the override measure name
+vrb _origvalue decimal   " The original value that was overridden. All dims are limited to a single member so it equals to the base measure name. This is NOT the same as source value!!!
+vrb _compcnt integer     " Number of composites after limit to last descendants that also have a non-NA value associated
+vrb _compcnt2 integer    " Actual number of composites to loop over when allocating from parent to more granular cube
+vrb _incr decimal        " Stores the increment to be added to the base value (e.g. _thisvalue / _compcnt)
+vrb _prop decimal        " Stores the proportional value when PROP as method is selected
+vrb _sum decimal         " Stores the sum of all source values (to support the calculation of proportions)
+vrb  i integer           " Loop variable
+vrb _audit_user text     " The user that requested the allocation
+vrb _audit_date text     " The date of the allocation
+vrb _audit_comment text  " The comment to be applied
+vrb _audit_type text     " The override type performed
+vrb _parentvalue decimal " When allocating values across the granular cube cells, this holds the current (possibly overridden) less granular cube's corresponding value
+vrb _alloc text          " Dynamic alloc program. Replaces multiple ampersand substitutions
+vrb _qdr text            " QDR created dynamically to point to the current change (in the detail override cube)
+vrb _dummy text          " Dummy is dummy (used to overcome a syntax error when logging)
+vrb _sec decimal         " Holds the 'seconds' upon entry this program. Used to calculate elapsed secs
+vrb _nochildren boolean  " Indicates if the override occurred on the last descendants level or not
+vrb _scdim text          " Scenario dimension
+vrb _sccomp text         " Custom scenario composite (merge of custom composite and total override composite)
+
+trap on error noprint
+
+badline = yes
+naskip = yes
+naskip2 = yes
+dividebyzero = yes
+
+_sec = seconds
+
+" Parameter checks
+if not isvalue (all_cubes joinchars (_basecube '.CUBE'))
+then do
+    shw joinchars ('Cube ' _basecube ' does not exist.')
+    signal '-50000' joinchars ('Cube ' _basecube ' does not exist.')
+doend
+
+if not isvalue (all_measures joinchars (_basecube '.' _meas '.MEASURE'))
+then do
+    shw joinchars ('Measure ' _meas ' does not exist.')
+    signal '-50000' joinchars ('Measure ' _meas ' does not exist.')
+doend
+
+if _method ne 'EVEN' and _method ne 'COPY' and _method ne 'PROP' and _method ne 'ZERO' and _method ne 'DUMMY'
+then do
+    shw joinchars ('Invalid allocation method ' _method ' specified.')
+    signal '-50000' joinchars ('Invalid allocation method ' _method ' specified.')
+doend
+
+if _gran_cube ne na
+then do
+    if not isvalue (all_cubes joinchars (_gran_cube '.CUBE'))
+    then do
+        shw joinchars ('Granular cube ' _gran_cube ' does not exist.')
+        signal '-50000' joinchars ('Granular cube ' _gran_cube ' does not exist.')
+    doend
+
+    if not isvalue (all_measures joinchars (_gran_cube '_' _gran_meas '.MEASURE'))
+    then do
+        shw joinchars ('Granular measure ' _gran_meas ' does not exist.')
+        signal '-50000' joinchars ('Granular measure ' _gran_meas ' does not exist.')
+    doend
+doend
+
+" Base cube and measure
+if is.compressed (_basecube)
+then do
+    _basemeas = joinchars (_basecube '_' _version '_PRT_TOPVAR (' _basecube '_' _version '_PRT_MEASDIM \'' _meas '\')')
+    _basemeas_frml = joinchars (_basecube '_' _version '_PRT_TOPFRML (' _basecube '_' _version '_PRT_MEASDIM \'' _meas '\')')
+    if not isvalue (&joinchars (_basecube '_' _version '_PRT_MEASDIM'), _meas)
+    then do
+        _basemeas = joinchars (_basecube '_' _version '_' _meas)
+        _basemeas_frml = _basemeas
+    doend
+doend
+else do
+    _basemeas = joinchars (_basecube '_' _version '_' _meas '_STORED')
+    _basemeas_frml = joinchars (_basecube '_' _version '_' _meas)
+    if not exists (_basemeas)
+    then do
+       _basemeas = joinchars (_basecube '_' _version '_' _meas)
+    doend
+doend
+
+" Scenario dimension
+_scdim = joinchars (_basecube '_SC')
+if not exists (_scdim)
+then do
+    shw joinchars ('Scenario dimension ' _scdim ' does not exist.')
+    signal '-50000' joinchars ('Scenario dimension ' _scdim ' does not exist.')
+doend
+
+" Total Override cube
+if is.compressed (joinchars (_basecube '_SC_N'))
+then do
+    _oridemeas = joinchars (_basecube '_SC_N_PRT_TOPVAR (' _basecube '_SC_N_PRT_MEASDIM \'OV_' _meas '\')')
+doend
+else do
+    _oridemeas = joinchars (_basecube '_SC_N_OV_' _meas '_STORED')
+doend
+
+" Check 'type' parameter
+if _type eq na or _type gt 2 or _type lt 0
+then do
+    shw joinchars ('Invalid cube type parameter: ' _type)
+    signal '-50000' joinchars ('Invalid cube type parameter: ' _type)
+doend
+
+" For cube of type 2, the total override measure name is derived from the scenario. TOPVAR is now a formula
+if _type eq 2
+then do
+   if convert (&_scdim text) eq '**NEW**'
+   then do
+      _oridemeas = joinchars (_basecube '_SC_N_PRT_TOPVAR_NEW (' _basecube '_SC_N_PRT_MEASDIM \'OV_' _meas '\')')
+   doend
+   else do
+      _oridemeas = joinchars (_basecube '_SC_N_PRT_TOPVAR_' &_scdim ' (' _basecube '_SC_N_PRT_MEASDIM \'OV_' _meas '\')')
+   doend
+doend
+
+" Audit cube and measure
+_auditmeas = joinchars (_basecube '_SC_N_A_NC_ATT_' _meas '_STORED')
+_auditmeasx = joinchars (_basecube '_SC_N_A_ATT_' _meas '_STORED')
+
+" View cube and measure
+_viewmeas2 = joinchars (_basecube '_SC_VW_' _meas)
+_viewmeas = joinchars ('(' _basemeas ' + ' _oridemeas ')') " This is much much faster this way
+_viewmeas_frml = joinchars ('(' _basemeas_frml ' + ' _oridemeas ')') " This is much much faster this way
+
+if _useview
+then do
+   _viewmeas = _viewmeas2
+   _viewmeas_frml = _viewmeas2
+doend
+
+" Change dimension
+_chgdim = joinchars (_basecube '_CHG')
+
+" High water mark
+_hwm = joinchars (_basecube '_SC.' _basecube '_CHG')
+
+" Change cube and measure
+" For cube of type 1 and 2, the detail change measure name is derived from the scenario. TOPVAR is now a formula
+if _type gt 0
+then do
+   if convert (&_scdim text) eq '**NEW**'
+   then do
+       _changemeas = joinchars (_basecube '_SC_N_NC_PRT_TOPVAR_NEW (' _basecube '_SC_N_PRT_MEASDIM \'OV_' _meas '\')')
+   doend
+   else do
+       _changemeas = joinchars (_basecube '_SC_N_NC_PRT_TOPVAR_' &_scdim ' (' _basecube '_SC_N_PRT_MEASDIM \'OV_' _meas '\')')
+   doend
+doend
+else do
+   _changemeas = joinchars (_basecube '_SC_N_NC_PRT_TOPVAR (' _basecube '_SC_N_PRT_MEASDIM \'OV_' _meas '\')')
+doend
+
+" QDR that points to the detail change measure's current change dimension slot
+if _type gt 0
+then do
+   if convert (&_scdim text) eq '**NEW**'
+   then do
+      _qdr = joinchars (_basecube '_SC_N_NC_PRT_TOPVAR_NEW (' _basecube '_SC_N_PRT_MEASDIM \'OV_' _meas '\' ' _chgdim ' ' _hwm ')')
+   doend
+   else do
+      _qdr = joinchars (_basecube '_SC_N_NC_PRT_TOPVAR_' &_scdim ' (' _basecube '_SC_N_PRT_MEASDIM \'OV_' _meas '\' ' _chgdim ' ' _hwm ')')
+   doend
+doend
+else do
+   _qdr = joinchars (_basecube '_SC_N_NC_PRT_TOPVAR (' _basecube '_SC_N_PRT_MEASDIM \'OV_' _meas '\' ' _chgdim ' ' _hwm ')')
+doend
+
+" Composites
+" 1. Use base cube's composite or custom composite.
+" 2. If a composite has explicitly been passed in as parameter, use that one
+" 3. If a custom override merge composite exists, use that one
+if is.compressed (_basecube) " Use base cube's composite or custom composite.
+then do
+    _cmp_name = joinchars (_basecube '_CUSTOM_COMPOSITE')
+doend
+else do
+    _cmp_name = joinchars (_basecube '_COMPOSITE')
+doend
+
+if _composite ne na " If a composite has explicitly been passed in as parameter, use that one
+then _cmp_name = _composite
+
+_sccomp = joinchars (_basecube '_CUST_OV_MERGE_COMP_' &_scdim)
+_sccomp = changechars (_sccomp '*' '_')
+if exists (_sccomp)   " If a custom, ov merge scenario composite exists, use that one!
+then _cmp_name = _sccomp
+
+" Check existence of override structure elements
+if is.compressed (joinchars (_basecube '_SC_N'))
+then do
+    if not exists (joinchars (_basecube '_SC_N_PRT_TOPVAR'))
+    then do
+        shw joinchars ('Override measure ' _oridemeas ' does not exist.')
+        signal '-50000' joinchars ('Override measure ' _oridemeas ' does not exist.')
+    doend
+doend
+else do
+    if not exists (_oridemeas)
+    then do
+        shw joinchars ('Override measure ' _oridemeas ' does not exist.')
+        signal '-50000' joinchars ('Override measure ' _oridemeas ' does not exist.')
+    doend
+doend
+
+if not exists (_auditmeas)
+then do
+    shw joinchars ('Audit measure ' _auditmeas ' does not exist.')
+    signal '-50000' joinchars ('Audit measure ' _auditmeas ' does not exist.')
+doend
+
+if not exists (_auditmeasx)
+then do
+    shw joinchars ('Old audit measure ' _auditmeasx ' does not exist.')
+    signal '-50000' joinchars ('Old audit measure ' _auditmeasx ' does not exist.')
+doend
+
+if not exists (joinchars (_basecube '_SC_N_NC_PRT_TOPVAR'))
+then do
+    shw joinchars ('Change measure ' _changemeas ' does not exist.')
+    signal '-50000' joinchars ('Change measure ' _changemeas ' does not exist.')
+doend
+
+if not exists (_chgdim)
+then do
+    shw joinchars ('Change dimension ' _chgdim ' does not exist.')
+    signal '-50000' joinchars ('Change dimension ' _chgdim ' does not exist.')
+doend
+
+if not exists (_hwm)
+then do
+    shw joinchars ('High water mark measure ' _hwm ' does not exist.')
+    signal '-50000' joinchars ('High water mark measure ' _hwm ' does not exist.')
+doend
+
+if _method ne 'DUMMY'
+then do
+  if not exists (_cmp_name)
+  then do
+      shw joinchars ('Composite ' _cmp_name ' does not exist.')
+      signal '-50000' joinchars ('Composite ' _cmp_name ' does not exist.')
+  doend
+doend
+
+" Fetch audit info from old audit measure
+_audit_user = &_auditmeasx (OR_ATTR 'OR_USERID')
+_audit_date = &_auditmeasx (OR_ATTR 'OR_TIMESTAMP')
+_audit_comment = &_auditmeasx (OR_ATTR 'OR_COMMENT')
+_audit_type = &_auditmeasx (OR_ATTR 'OR_TYPE')
+
+if _audit_user eq na or _audit_date eq na
+then do
+    shw joinchars ('Missing audit information.')
+    signal '-50000' joinchars ('Missing audit information.')
+doend
+
+shw 'Params:'
+shw joinchars ('Method: ' _method)
+shw joinchars ('Allocate to all descendants?: ' _newbool)
+shw joinchars ('Base measure: ' _basemeas)
+shw joinchars ('Cube type: ' _type)
+shw joinchars ('Override measure: ' _oridemeas)
+shw joinchars ('Audit measure: ' _auditmeas)
+shw joinchars ('Old audit measure: ' _auditmeasx)
+shw joinchars ('View measure: ' _viewmeas2)
+shw joinchars ('View measure equation: ' _viewmeas)
+shw joinchars ('Scenario dimension: ' _scdim)
+shw joinchars ('Scenario: ' &_scdim)
+shw joinchars ('Change dimension: ' _chgdim)
+shw joinchars ('Change measure: ' _changemeas)
+shw joinchars ('High water mark relation: ' _hwm)
+shw joinchars ('High water mark: ' &_hwm)
+shw joinchars ('Composite: ' _cmp_name)
+shw joinchars ('Audit user: ' _audit_user)
+shw joinchars ('Audit date: ' _audit_date)
+shw joinchars ('Audit comment: ' _audit_comment)
+shw joinchars ('Granular measure: ' _granmeas)
+shw joinchars ('Granular composite: ' _gran_comp)
+shw joinchars ('Granular override measure: ' _gran_ov)
+shw joinchars ('Granular view measure: ' _gran_view)
+shw joinchars ('Granular override composite: ' _gran_p_comp)
+
+" Scenario and changedim must be limited at this time
+if obj (dimmax _chgdim) eq 0
+then do
+   mnt &_chgdim add 20
+   lmt &_chgdim to 1
+doend
+
+if &_hwm eq na
+then &_hwm = 1
+
+lmt &_chgdim to &_hwm
+&_auditmeas (OR_ATTR 'OR_COMMENT')= _audit_comment
+&_auditmeas (OR_ATTR 'OR_USERID')= _audit_user
+&_auditmeas (OR_ATTR 'OR_TIMESTAMP')= _audit_date
+&_auditmeas (OR_ATTR 'OR_TYPE')= _audit_type
+
+" Get dimension list
+_dims = obj (property 'ALLDIMENSIONS' _basecube) " Ignores MEASDIM dimension
+_numdims = numlines (_dims)
+
+" Create context to save current status of the dimensions
+if findlines (nafill (context, ' ') 'ALCCTXT') eq 0
+then do
+    context 'ALCCTXT' create
+doend
+else do
+    context 'ALCCTXT' discard
+    context 'ALCCTXT' create
+doend
+
+" Clear cache used by the aggregate function as back-end value changes will not show correctly in the front-end
+if _type eq 2
+then do
+   if convert (&_scdim text) eq '**NEW**'
+   then do
+      &(joinchars ('clear all cache from ' _basecube '_SC_N_PRT_TOPVAR_NEW'))
+   doend
+   else do
+      &(joinchars ('clear all cache from ' _basecube '_SC_N_PRT_TOPVAR_' &_scdim))
+   doend
+doend
+else do
+   if is.compressed (joinchars (_basecube '_SC_N'))
+   then do
+       &(joinchars ('clear all cache from ' _basecube '_SC_N_PRT_TOPVAR'))
+   doend
+   else do
+       &(joinchars ('clear all cache from ' _oridemeas))
+   doend
+doend
+
+" Store value to be allocated. ASSUME: all dims limited to one value
+if not _moride
+then do
+    _oridevalue = nafill (&_viewmeas, &_viewmeas_frml) " Override is delta therefore the View is used
+    if not _newbool
+    then _origvalue = nafill (&_basemeas, &_basemeas_frml)
+    else _origvalue = NA
+    &_changemeas = &_oridemeas " Populate the starting point override
+    _prevtotal = _origvalue + &_changemeas
+doend
+else do
+    lmt &_chgdim to 1 to &_hwm
+    if not _newbool
+    then _origvalue = total (&_changemeas) + nafill (&_basemeas, &_basemeas_frml)
+    else _origvalue = total (&_changemeas)
+    _oridevalue = _origvalue + &_oridemeas
+    lmt &_chgdim to &_hwm
+    &_changemeas = &_oridemeas " Populate the starting point override
+    lmt &_chgdim to 1 to &_hwm
+    &_oridemeas = total (&_changemeas)
+doend
+
+shw joinchars ('Current view value: ' nafill (&_viewmeas, &_viewmeas_frml))
+shw joinchars ('Override value: '  &_oridemeas)
+shw joinchars ('Original value: ' _origvalue)
+shw '-----------------------------------------'
+
+" Limit all dims to last descendants
+i = _numdims
+_nochildren = true
+while i gt 0
+do
+    _thisdim = extlines (_dims i 1)
+    if findchars (_thisdim 'MEASDIM') gt 0
+    then do
+       i = i - 1
+       continue
+    doend
+    context 'ALCCTXT' save &_thisdim " Save current status
+    if numlines (limit (&_thisdim to children using &(joinchars (_thisdim '_parentrel')))) ne na
+    then _nochildren = false
+    lmt &_thisdim to bottomdescendants using &(joinchars (_thisdim '_parentrel')) " ASSUME: Hierarchies are limited
+    i = i - 1
+doend
+
+" There are no children to allocate values to so skip the rest of the program
+if _nochildren
+then goto nochild
+
+" Set changedim status to cummulate changes and store it in the override measure
+lmt &_chgdim to 1 to &_hwm
+
+" Define _DO_ALLOC program. It is defined dynamically and then executed to avoid extensive use of ampersands for performance reasons
+if not exists ('_DO_ALLOC')
+then do
+    dfn _do_alloc program integer
+doend
+
+" Switch on allocation method
+switch _method
+do
+    case 'ZERO': " Special case when the override value is zero
+         shw 'Zeroing out all bottom descendants...'
+         if _newbool
+         then do
+             if not _moride
+             then do
+                 &_oridemeas = &_basemeas * -1 " Changing the sign basically
+                 &_qdr = &_oridemeas
+             doend
+             else do
+                 &_qdr = &_viewmeas * -1
+                 cns _do_alloc
+                 _alloc = joinlines ('trap on error noprint' -
+                 joinchars (_oridemeas ' = na') -
+                 joinchars ('for ' _chgdim) -
+                 'do' -
+                 joinchars ('    ' _oridemeas ' = ' _oridemeas ' + ' _changemeas) -
+                 'doend' -
+                 '' -
+                 'return 0' -
+                 '' -
+                 'error:' -
+                 'shw errortext' -
+                 'return -1')
+
+                 program _alloc
+                 cmp _do_alloc
+                 if _do_alloc ne 0
+                 then do
+                    goto error
+                 doend
+             doend
+         doend
+         else do
+             " Apply alloc value only for combinations that exist in the base-measure
+             cns _do_alloc
+             _alloc = joinlines ('trap on error noprint' -
+             joinchars ('for ' _cmp_name) -
+             'do')
+             if not _moride
+             then do
+                 _alloc = joinlines (_alloc joinchars ('   ' _oridemeas ' = if ' _basemeas ' ne na then ' _basemeas ' * -1 else na " Changing the sign basically') -
+                 joinchars (_qdr ' = ' _oridemeas '" Changemeas is the same as Overridemeas in this case') -
+                 'doend' -
+                 '' -
+                 'return 0' -
+                 '' -
+                 'error:' -
+                 'shw errortext' -
+                 'return -1')
+             doend
+             else do
+                 _alloc = joinlines (_alloc joinchars ('   ' _qdr ' = if ' _viewmeas ' ne na then ' _viewmeas ' * -1 else na " Changemeas must come first as it uses the View') -
+                 joinchars ('   ' _oridemeas ' = NA') -
+                 joinchars ('   for ' _chgdim) -
+                 '   do' -
+                 joinchars ('      ' _oridemeas ' = ' _oridemeas ' + ' _changemeas) -
+                 '   doend' -
+                 'doend' -
+                 '' -
+                 'return 0' -
+                 '' -
+                 'error:' -
+                 'shw errortext' -
+                 'return -1')
+             doend
+
+             program _alloc
+             cmp _do_alloc
+             if _do_alloc ne 0
+             then do
+                goto error
+             doend
+         doend
+         shw 'Finished zeroing.'
+         break
+    case 'EVEN':   " Allocate the difference evenly (equally)
+         shw 'Allocating evenly...'
+         if _newbool
+         then do
+             _compcnt = 1
+             i = _numdims
+             while i gt 0
+             do
+                 _thisdim = extlines (_dims i 1)
+                 _compcnt = _compcnt * statlen (&_thisdim)   " All possible combinations. Permutation of statlens (i.e. all possible last descendants)
+                 i = i - 1
+             doend
+         doend
+         else do
+             _compcnt = 0
+             _compcnt2 = 0
+             for &_cmp_name
+             do
+                _compcnt = _compcnt + count (&_viewmeas ne na)  " Number of combinations holding non-NA value (i.e. number of children with values). Works with non-composite dims such as Time as well!
+                _compcnt2 = _compcnt2 + 1
+             doend
+         doend
+
+         shw joinchars ('Number of non-NA cells to allocate to: ' _compcnt)
+         shw joinchars ('Number of composite touples to loop over: ' _compcnt2)
+
+         _incr = (_oridevalue - nafill (_origvalue, 0)) / _compcnt " Increment per cell = the delta (oridemeas) divided by the number of children
+         shw joinchars ('Difference: ' _oridevalue - nafill (_origvalue, 0))
+
+         if _incr ge 0
+         then shw joinchars ('Increment per cell: ' _incr)
+         else shw joinchars ('Decrement per cell: ' _incr)
+         shw 'Allocating now...'
+
+         if _newbool
+         then do
+             if not _moride
+             then do
+                 &_qdr = _incr
+                 &_oridemeas = &_qdr " For all possible combinations add the increment
+             doend
+             else do
+                 &_qdr = _incr
+                 cns _do_alloc
+                 _alloc = joinlines ('trap on error noprint' -
+                 joinchars (_oridemeas ' = na') -
+                 joinchars ('for ' _chgdim) -
+                 'do' -
+                 joinchars ('    ' _oridemeas ' = ' _oridemeas ' + ' _changemeas) -
+                 'doend' -
+                 '' -
+                 'return 0' -
+                 '' -
+                 'error:' -
+                 'shw errortext' -
+                 'return -1')
+
+                 program _alloc
+                 cmp _do_alloc
+                 if _do_alloc ne 0
+                 then do
+                    goto error
+                 doend
+             doend
+         doend
+         else do
+             cns _do_alloc
+             _alloc = joinlines ('trap on error noprint' -
+             joinchars ('for ' _cmp_name) -
+             'do')
+             if not _moride
+             then do
+                 _alloc = joinlines (_alloc joinchars ('   ' _oridemeas ' = if ' _basemeas ' ne na then ' convert (_incr text 6 no no) ' else na') -
+                 joinchars (_qdr ' = ' _oridemeas) -
+                 'doend' -
+                 '' -
+                 'return 0' -
+                 '' -
+                 'error:' -
+                 'shw errortext' -
+                 'return -1')
+             doend
+             else do
+                 _alloc = joinlines (_alloc joinchars ('   ' _qdr ' = if ' _viewmeas ' ne na then ' convert (_incr text 6 no no) ' else na') -
+                 joinchars ('   ' _oridemeas ' = NA') -
+                 joinchars ('   for ' _chgdim) -
+                 '   do' -
+                 joinchars ('      ' _oridemeas ' = ' _oridemeas ' + ' _changemeas) -
+                 '   doend' -
+                 'doend' -
+                 '' -
+                 'return 0' -
+                 '' -
+                 'error:' -
+                 'shw errortext' -
+                 'return -1')
+             doend
+             program _alloc
+             cmp _do_alloc
+             if _do_alloc ne 0
+             then do
+                 goto error
+             doend
+         doend
+         shw 'Finished allocating.'
+         break
+    case 'COPY':
+         shw 'Copying/allocating now...'
+         if _newbool
+         then do
+             if not _moride
+             then do
+                 &_qdr = _oridevalue - &_basemeas " Copy across all combinations
+                 &_oridemeas = &_qdr
+             doend
+             else do
+                 &_qdr = _oridevalue - &_viewmeas
+                 cns _do_alloc
+                 _alloc = joinlines ('trap on error noprint' -
+                 joinchars (_oridemeas ' = na') -
+                 joinchars ('for ' _chgdim) -
+                 'do' -
+                 joinchars ('    ' _oridemeas ' = ' _oridemeas ' + ' _changemeas) -
+                 'doend' -
+                 '' -
+                 'return 0' -
+                 '' -
+                 'error:' -
+                 'shw errortext' -
+                 'return -1')
+
+                 program _alloc
+                 cmp _do_alloc
+                 if _do_alloc ne 0
+                 then do
+                    goto error
+                 doend
+             doend
+         doend
+         else do
+             cns _do_alloc
+             _alloc = joinlines ('vrb _sum decimal' -
+             'trap on error noprint' -
+             joinchars ('for ' _cmp_name) -
+             'do')
+             " Apply alloc value only for combinations that exist in the base-measure
+             if not _moride
+             then do
+                 _alloc = joinlines (_alloc joinchars ('   ' _qdr ' = if ' _viewmeas ' ne na then ' convert (_oridevalue text 6 no no) ' - ' _basemeas ' else na') -
+                 joinchars (_oridemeas ' = ' _qdr) -
+                 'doend' -
+                 '' -
+                 'return 0' -
+                 '' -
+                 'error:' -
+                 'shw errortext' -
+                 'return -1')
+             doend
+             else do
+                 _alloc = joinlines (_alloc joinchars ('   ' _qdr ' = if ' _viewmeas ' ne na then ' convert (_oridevalue text 6 no no) ' - ' _viewmeas ' else na') -
+                 joinchars ('   ' _oridemeas ' = NA') -
+                 joinchars ('   for ' _chgdim) -
+                 '   do' -
+                 joinchars ('      ' _oridemeas ' = ' _oridemeas ' + ' _changemeas) -
+                 '   doend' -
+                 'doend' -
+                 '' -
+                 'return 0' -
+                 '' -
+                 'error:' -
+                 'shw errortext' -
+                 'return -1')
+             doend
+
+             program _alloc
+             cmp _do_alloc
+             if _do_alloc ne 0
+             then do
+                 goto error
+             doend
+         doend
+         shw 'Finished allocating.'
+         break
+    case 'PROP':
+         shw 'Allocating proportionately...'
+         shw 'Allocating now...'
+         _compcnt = 0
+         _compcnt2 = 0
+         for &_cmp_name
+         do
+             _compcnt = _compcnt + count (&_viewmeas ne na)  " Number of combinations holding non-NA value (i.e. number of children with values). Works with non-composite dims such as Time as well!
+             _compcnt2 = _compcnt2 + 1
+         doend
+
+         shw joinchars ('Number of non-NA cells to allocate to: ' _compcnt)
+         shw joinchars ('Number of composite touples to loop over: ' _compcnt2)
+
+         cns _do_alloc
+         _alloc = joinlines ('trap on error noprint' -
+         joinchars ('for ' _cmp_name) -
+         'do' -
+         joinchars ('   ' _qdr ' = if ' _viewmeas ' ne na then ((' _viewmeas ' / ' convert (nafill (_origvalue, 0) text 6 no no) ') * ' convert (_oridevalue text 6 no no) ') - ' _viewmeas ' else NA') -
+         joinchars ('   ' _oridemeas ' = NA') -
+         joinchars ('   for ' _chgdim) -
+         '   do' -
+         joinchars ('      ' _oridemeas ' = ' _oridemeas ' + ' _changemeas) -
+         '   doend' -
+         'doend' -
+         '' -
+         'return 0' -
+         '' -
+         'error:' -
+         'shw errortext' -
+         'return -1')
+         program _alloc
+         cmp _do_alloc
+         if _do_alloc ne 0
+         then do
+             goto error
+         doend
+         shw 'Finished allocating.'
+         break
+    default:
+         break
+doend
+
+" If _newbool set to True, create a new scenario based composite by merging custom composite and ov composite
+if _newbool
+then do
+   shw '-----------------------------------------'
+   shw 'Creating/maintaining the scenario based merged composite...'
+   shw joinchars ('_MC is called with the following parameters: Basecube: ' _basecube ', Measure: ' _meas ', Composite: ' _composite)
+   if _mc (_basecube, _meas, _composite, false) eq 0
+   then do
+      shw joinchars (_basecube '_CUST_OV_MERGE_COMP_' &_scdim ' composite created for future use.')
+   doend
+   else do
+      shw 'The custom merged scenario composite has not been created.'
+   doend
+   shw 'Creation/maintainance of the scenario based merged composite finished.'
+   shw '-----------------------------------------'
+doend
+
+nochild:
+
+" If a more granular cube is there, allocate values further to those combinations. Method used is always PROP despite method of allocation for less granular cube
+if _gran_cube ne na
+then do
+    shw 'Granular measure - Allocating proportionately...'
+   switch _method
+   do
+       case 'ZERO':   " Zero-out -> allocate to the granular cube proportionally
+       case 'EVEN':   " Allocate evenly (equally) -> allocate to the granular cube proportionally
+       case 'COPY':   " Copy values -> allocate to the granular cube proportionally
+       case 'PROP':   " Allocate proportionately -> same for granular cube
+           " Generate the Alloc program as the code would otherwise contain lots of ampersand substitutions that would result in poorer performance
+           cns _do_alloc
+           _alloc = joinlines ('vrb _parentvalue decimal' -
+           'vrb _diff decimal' -
+           'vrb _sum decimal' -
+           'vrb i integer' -
+           'vrb _dummy text' -
+           '' -
+           'trap on error noprint' -
+           'i = 1' -
+           joinchars ('for ' _cmp_name '" Loop over the composite of the less granular cube') -
+           'do' -
+           joinchars ('    _sum = total (' _basemeas ') " For each tuple total across all non-composite dim (e.g. time). This total is the same as if totalled the granular cube!') -
+           joinchars ('    _diff = total (' _oridemeas ') " Do the same for override values (total all deltas)') -
+           joinchars ('    ' _gran_ov ' = if ' _basemeas ' ne na then ' _granmeas ' * (_diff / _sum) across ' _gran_comp ' else na " Store it in the granular published cube') -
+           '    if intpart (i / 10000) * 10000 eq i " Log whenever 10K composites (less granular cube) are done.' -
+           '    then do' -
+           joinchars ('        shw joinchars (i \' composites done.\')') -
+           '    doend' -
+           '    i = i + 1' -
+           'doend' -
+           '' -
+           'return 0' -
+           '' -
+           'error:' -
+           'shw errortext' -
+           'return -1' -
+           'END')
+
+           " Define program, compile and run.
+           program _alloc
+           cmp _do_alloc
+           if _do_alloc ne 0
+           then do
+              goto error
+           doend
+           shw 'Granular measure - Finished allocating.'
+           break
+       default:
+           break
+   doend
+doend
+
+" Update and commit AW if attached RW
+if aw (rw aw (name))
+then do
+   shw 'Updating and committing database...'
+   upd
+   commit
+doend
+
+" Restore dimension status, drop context
+context 'ALCCTXT' apply
+context 'ALCCTXT' discard
+
+shw joinchars ('Allocation done in ' seconds - _sec ' seconds.')
+shw '************ Allocation finished *************'
+
+return 0
+
+" Error handler
+error:
+signal errorname errortext
+return -1

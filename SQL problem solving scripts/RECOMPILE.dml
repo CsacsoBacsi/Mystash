@@ -1,0 +1,152 @@
+"----------------------------------------------------------------------------------------------------------------------------------------------
+" Program       : RECOMPILE
+" Params        : Types
+"                 Types => types of objects need recompiling. Any combination of P (program), M (model), F (formula) or A (aggmap)
+" Example       : shw recompile ('PA')
+" Created by    : Csaba Riedlinger
+" Date          : 25th of Jan, 2011
+" Purpose       : To recompile compilable objects prior to e.g. aggregation or cube maintenance. For yet not known reasons, aggmaps sometimes
+"                 become invalid which hampers the cube maintenance process as it bombs out with an error. By recompiling a group (or all) objects
+"                 prior to other operations that may use them we can prevent this from happening.
+"                 The built-in ALLCOMPILE command sometimes hangs (behaves funny) therefore this DML uses a loop and the COMPILE command to
+"                 compile objects individually. Compilation errors unfortunately can't be trapped so all we can do is try compiling the object
+"                 and hope that it becomes valid. No subfunction of the OBJ function could tell if an object is valid or not. With this DML
+"                 we can only give our best shot to make all objects valid by the time they are needed.
+"                 The output of the compile command is echoed to the standard output which is redirected to a file in the Unix file system.
+"                 Once the compilation of all selected objects are finished, this file is re-read and parsed for error mesages. If an object
+"                 failed to have compiled, it is tried to be compiled again. This is as far as this DML can go.
+" Returns       : 0  - no error
+"                 -1 - error occurred
+" Modified by/on: CR - 25/01/2011 - Initial version
+"----------------------------------------------------------------------------------------------------------------------------------------------
+
+" Arguments
+arg _types text     " Any combination of P (program), M (model), F (formula) or A (aggmap)
+
+vrb i integer       " Loop variable
+vrb _lmt text       " Limit command to limit to group of compilable objects
+vrb fhandle integer " File handle of file that stores stdout messages from the COMPILE command
+vrb _line text      " A single line of the file (most recently read)
+vrb _prevline text  " Previuosly read line of the file
+vrb _objlist text   " List of objects compiled with an error
+
+trap on error noprint
+
+" Construct a limit command to pick a set of compilable objects
+i = 1
+_lmt = 'lmt name to '
+while i le numchars (_types)
+do
+    switch extchars (_types, i, 1)
+    do
+        case 'P':
+            _lmt = joinchars (_lmt 'obj (type) eq \'PROGRAM\' or ')
+            break
+        case 'M':
+            _lmt = joinchars (_lmt 'obj (type) eq \'MODEL\' or ')
+            break
+        case 'F':
+            _lmt = joinchars (_lmt 'obj (type) eq \'FORMULA\' or ')
+            break
+        case 'A':
+            _lmt = joinchars (_lmt 'obj (type) eq \'AGGMAP\' or ')
+            break
+    doend
+
+    i = i + 1
+doend
+
+_lmt = extchars (_lmt 1 numchars (_lmt) - 4)
+
+" Execute limit
+&_lmt
+
+" Redirect output, compile objects
+cda 'EIF_DUMP_DIR'
+otf 'all_compile_output.log' nocache
+for name
+do
+    trap on carryon noprint
+
+    shw joinchars ('*#* ' name)
+    compile &name
+    carryon:
+
+doend
+
+trap on error noprint
+
+upd
+cmm
+
+otf eof
+
+" Re-read the output in search for errors
+fhandle = fileopen ('all_compile_output.log', read)
+_line = fileget (fhandle) " Get first line
+while _line ne na " Test for EOF
+do
+    _prevline = _line
+    _line = fileget (fhandle) " Read next line
+    if extchars (_line, 1, 6) eq 'ERROR:'
+    then do
+        if extchars (_prevline, 1, 3) eq '*#*'
+        then do
+            _objlist = joinlines (_objlist, extchars (_prevline, 5))
+        doend
+    doend
+doend
+fileclose fhandle
+
+" Try re-compiling objects that failed first compilation
+if _objlist eq na
+then do
+    return 0
+doend
+
+otf 'all_compile_output_pass2.log' nocache
+i = 1
+while i le numlines (_objlist)
+do
+    shw joinchars ('*#* ' extlines (_objlist, i, 1))
+    trap on goon noprint
+    compile &(extlines (_objlist, i, 1))
+
+    goon:
+    i = i + 1
+doend
+
+otf eof
+
+upd
+cmm
+
+" Re-read the second output in search for errors and send them back to caller
+fhandle = fileopen ('all_compile_output_pass2.log', read)
+shw 'Objects that could not be compiled succcessfully even in two passes:'
+_line = fileget (fhandle) " Get first line
+while _line ne na " Test for EOF
+do
+    _prevline = _line
+    _line = fileget (fhandle) " Read next line
+    if extchars (_line, 1, 6) eq 'ERROR:'
+    then do
+        if extchars (_prevline, 1, 3) eq '*#*'
+        then do
+            shw extchars (_prevline, 5)
+        doend
+    doend
+doend
+fileclose fhandle
+
+return 0
+
+" Error handling
+error:
+shw errortext
+otf eof
+if fhandle ne na " Close file handle if open
+then do
+    fileclose fhandle
+doend
+return -1

@@ -1,0 +1,78 @@
+vrb _time text
+vrb _gst text
+vrb _gas_lic text
+vrb _bus text
+vrb _ldz text
+vrb _euc text
+vrb _gas_product text
+vrb _gdf_ver text
+vrb _sned decimal
+vrb _site_c decimal
+vrb _wad decimal
+vrb i integer
+
+trap on error noprint
+
+errortext = ''
+
+sql declare c1 cursor for select time, gas_site_type, gas_licence, sector, ldz, euc, product_type, version_id, sned, site_count, wad -
+from finance.vw_wb_gdf_small_nonagg -
+where -
+(FINANCE.VW_WB_GDF_SMALL_NONAGG.TIME IS NOT NULL) and -
+(FINANCE.VW_WB_GDF_SMALL_NONAGG.GAS_SITE_TYPE IS NOT NULL) and -
+(FINANCE.VW_WB_GDF_SMALL_NONAGG.GAS_LICENCE IS NOT NULL) and -
+(FINANCE.VW_WB_GDF_SMALL_NONAGG.SECTOR IS NOT NULL) and -
+(FINANCE.VW_WB_GDF_SMALL_NONAGG.LDZ IS NOT NULL) and -
+(FINANCE.VW_WB_GDF_SMALL_NONAGG.EUC IS NOT NULL) and -
+(FINANCE.VW_WB_GDF_SMALL_NONAGG.PRODUCT_TYPE IS NOT NULL) and -
+(FINANCE.VW_WB_GDF_SMALL_NONAGG.VERSION_ID IS NOT NULL) -
+AND time not like '01/__/2010' -
+order by -
+FINANCE.VW_WB_GDF_SMALL_NONAGG.VERSION_ID, -
+FINANCE.VW_WB_GDF_SMALL_NONAGG.PRODUCT_TYPE, -
+FINANCE.VW_WB_GDF_SMALL_NONAGG.EUC, -
+FINANCE.VW_WB_GDF_SMALL_NONAGG.LDZ, -
+FINANCE.VW_WB_GDF_SMALL_NONAGG.SECTOR, -
+FINANCE.VW_WB_GDF_SMALL_NONAGG.GAS_LICENCE, -
+FINANCE.VW_WB_GDF_SMALL_NONAGG.GAS_SITE_TYPE, -
+FINANCE.VW_WB_GDF_SMALL_NONAGG.TIME
+
+cda 'EIF_DUMP_DIR'
+log append 'DebugGDF_cs.log'
+
+sql open c1
+
+if sqlcode ne 0
+then goto error
+
+i = 0
+
+while sqlcode eq 0
+do
+
+sql fetch c1 into :TIME_DAY_SURR -
+:GAS_SITE_TYPE_BASE_SURR -
+:GAS_LICENCE_BASE_SURR -
+:BUSINESS_STRUCTURE_SECTOR_SURR -
+:LDZ_LDZ_SURR -
+:EUC_EUC_SURR -
+:GAS_PRODUCT_PRODUCT_TYPE_SURR -
+:GDF_SMALL_VER_BASE_SURR -
+:GDF_SMALL_PRT_TOPVAR(GDF_AW.GDF!GDF_SMALL_PRT_MEASDIM'SEASONAL_NORMAL_EST_DEMAND') -
+:GDF_SMALL_PRT_TOPVAR(GDF_AW.GDF!GDF_SMALL_PRT_MEASDIM'SITE_COUNT') -
+:GDF_SMALL_PRT_TOPVAR(GDF_AW.GDF!GDF_SMALL_PRT_MEASDIM'WEATHER_ADJUSTED_DEMAND')
+
+   "sql fetch c1 into :_time, :_gst, :_gas_lic, :_bus, :_ldz, :_euc, :_gas_product, :_gdf_ver, :_sned, :_site_c, :_wad
+   i = i + 1
+   shw i
+doend
+
+sql close c1
+shw joinchars ('OK: ' i)
+
+return 0
+
+error:
+shw errortext
+shw sqlerrm
+shw joinchars ('Error: ' i)

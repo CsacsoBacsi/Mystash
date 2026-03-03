@@ -1,0 +1,12 @@
+cda 'EIF_DUMP_DIR'
+
+lmt name to obj (type) eq 'PROGRAM'
+
+for name
+do
+     log joinchars (name, '_v22.dml')
+     dsc &name
+     log eof
+     shw name
+     break
+doend

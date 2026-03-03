@@ -1,0 +1,42 @@
+dfn PNRG_E_BB_RR_SC_VW_RENEWED_VOL_PRG prg decimal
+
+vrb _currtime time
+vrb _retval decimal
+vrb _first integer
+
+vrb _time_curr integer
+vrb _time_data integer
+
+_currtime = time
+_time_curr = convert (time integer)
+_first = 0
+
+tempstat time
+do
+    lmt time to PNRG_E_BB_RR_HIDDEN_ORIG_VOL ne na " Get the first time period that has volume
+    if statlen (time) eq 0
+    then return na " None found
+
+    _time_data = convert (time integer)
+    if _time_data le _time_curr
+    then do
+        lmt time to _time_data to _time_curr
+    doend
+    else do
+        return na
+    doend
+
+    for time
+    do
+          if _first eq 0 " Starting point
+          then do
+              _retval = PNRG_E_BB_RR_HIDDEN_ORIG_VOL * (nafill (PNRG_E_BB_RR_SC_VW_PCT_RENEWAL, 1) / 100)
+              _first = 1
+          doend
+          else do
+              _retval = _retval * (nafill (PNRG_E_BB_RR_SC_VW_RENEWED_VOL, 1) / 100) " Previous value * pct
+          doend
+     doend
+doend
+
+return _retval

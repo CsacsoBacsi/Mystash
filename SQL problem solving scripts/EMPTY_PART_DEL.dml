@@ -1,0 +1,203 @@
+" ------------------------------------------------------------------------------
+" Program: EMPTY_PART_DEL
+" Params: -
+" Return value: 0 if no error occurred, -1 otherwise
+" Example: shw empty_part_del
+" Created by: Csaba Riedlinger
+" Date: 17th of Dec, 2008
+" Purpose: To 'safely' delete an empty partition from a cube. The DML loops over all cubes
+"          The program deletes the following items:
+"          1. Partition value from the metadata dimension unless it is partition P0
+"          2. Partition from the template and cube
+"          3. Partition composite if used any
+"          4. Other not used composites that once were associated with the partition
+"
+" Note:    Only works with cubes of type 0!
+"
+" Modified by/on:
+
+vrb _cube        text    " Cube name
+vrb _p_cube      text    " Cube's physical, variable name
+vrb _partby      text    " Dimension the cube is partitioned by
+vrb _part_templ  text    " An individual cube's partition template
+vrb _prt_roots   text    " Metadata relation that holds dim value - partition touples
+vrb _prt_dim     text    " Metadata dimension that holds all the partitions
+vrb _part        text    " Partition identifier that corresponds with the dimval
+vrb _parts       text    " Partitions the cube has
+vrb _dims        text    " List of dims in the partition (not just partitioning dimension!)
+vrb _partline    text    " Holds the composite definition in a partition definition
+vrb _comp_name   text    " Holds the composite name
+vrb _comp_list   text    " List of composites belonging to a cube
+vrb _action      text    " List of actions taken (for the record)
+vrb _var         text    " Holds the variable name for cubes of type 1 and 2
+vrb _tmc_comp    text    " Holds the Time-Measure-Change dim composite name
+vrb j            integer " Loop variable
+vrb i            integer " Loop variable
+vrb k            integer " Loop variable
+vrb _anyempty    boolean " Indicates if there were any empty partitions in the cube
+vrb _allcubes    text    " List of all cubes in AW
+
+trap on error noprint
+badline = yes
+
+blank
+shw '*******************************************'
+shw 'Scenario/version/partition deletion utility'
+shw '*******************************************'
+blank
+
+lmt all_cubes to all
+_allcubes = values (all_cubes)
+
+k = 1
+while k le numlines (_allcubes)
+do
+    _action = ''
+    _cube = extlines (_allcubes k 1)
+    _cube = extchars (_cube, 1, findchars (_cube '.CUBE') -1)
+
+    " Check if cube is partitioned
+    if not exists (joinchars (_cube '_PARTITION_TEMPLATE'))
+    then do
+        shw joinchars ('Cube ' _cube ' is not partitioned.')
+        blank
+        k = k + 1
+        continue
+    doend
+
+    " Construct objects
+    _part_templ = joinchars (_cube '_PARTITION_TEMPLATE')
+    _prt_roots = joinchars (_cube '_PRT_ROOTS')
+    _prt_dim = joinchars (_cube '_PRT_DIM')
+    _partby = obj (partby _part_templ)
+
+    row under '-' w 60 joinchars ('Cube: ' _cube)
+    shw joinchars ('Partition template : ' _part_templ)
+    shw joinchars ('Metadata relation  : ' _prt_roots)
+    shw joinchars ('Metadata part dim  : ' _prt_dim)
+    shw joinchars ('Partitioning dim   : ' _partby)
+
+    " Get all partition names
+    _parts = obj (partnames _part_templ)
+ 
+    i = 1
+    _anyempty = false 
+    while i le numlines (_parts)
+    do
+        _part = extlines (_parts i 1)
+        if _part eq 'P0' " Partition 0 is taboo!
+        then do
+            i = i + 1
+            continue
+        doend
+        _partline = obj (partition _part _part_templ)
+        if findchars (_partline '()') eq 0 " Not an empty partition
+        then do
+            i = i + 1
+            continue
+        doend
+      
+        _dims = obj (partdims _part _part_templ)
+        _partline = extlines (_dims findchars(_dims '<'  1 linenum) 1)
+        _comp_name = extchars (_partline 1 findchars (_partline '<') -2)
+
+        " Display 'participating' objects
+        shw joinchars ('Partition          : ' _part)
+        shw joinchars ('Partition composite: ' _comp_name)
+        " Delete partition from metadata dimension
+        if exists (_prt_dim)
+        then do
+            &(joinchars ('MNT ' _prt_dim ' DELETE \'' _part '\''))
+            _action = joinlines (_action joinchars ('->MNT ' _prt_dim ' DELETE \'' _part '\''))
+            _action = joinlines (_action joinchars ('Partition value ' _part ' deleted from the partitioning metadata dimension.'))
+        doend
+        " Delete partition from template, dissociate instance from cube
+        &(joinchars ('CHGDFN ' _part_templ ' DELETE CLEAR (PARTITION ' _part ')'))
+        _action = joinlines (_action joinchars ('->CHGDFN ' _part_templ ' DELETE CLEAR (PARTITION ' _part ')'))
+        _action = joinlines (_action joinchars ('Partition ' _part ' dropped from template ' _part_templ ' and de-instantiated from cube.'))
+        " Assumes that it is a global composite then. Probably later version will deal with it...
+        if findchars (_cube 'SC_N_NC') eq 0
+        then do
+            if nafill (cube_catalog (all_cubes joinchars(_cube '.CUBE'), cube_prop 'COMP_COMPRESSED'), 'NO') eq 'NO'
+            then do
+                _action = joinlines (_action 'Cube is not compressed therefore can not drop composite(s).')
+            doend
+            else do
+                " Delete composite used by partition
+                dlt &_comp_name
+                _action = joinlines (_action joinchars ('->DELETE ' _comp_name))
+                _action = joinlines (_action joinchars ('Partition composite ' _comp_name ' deleted from partition ' _part '.'))
+                if _comp_name like joinchars (_cube '_' '%_PRTCOMP%')
+                then do
+                    _comp_list = limit (name to obj (property 'AW$PARENT_NAME') eq _cube and obj (type name) eq 'COMPOSITE' and name like joinchars (_cube '_' '%_PRTCOMP'))
+                doend
+                else do
+                    _action = joinlines (_action joinchars ('Composite ' _comp_name ' does not follow usual naming convention. Unused composites not safe to be dropped.'))
+                doend
+
+                " Delete composite(s) once associated with this partition
+                j = 1
+                while j le numlines (_comp_list)
+                do
+                    trap on delerror noprint
+                    &(joinchars ('dlt ' extlines (_comp_list j 1)))
+                    _action = joinlines (_action joinchars ('->DELETE ' extlines (_comp_list j 1)))
+                    _action = joinlines (_action joinchars ('Unused composite ' extlines (_comp_list j 1) ' deleted.'))
+                    goto noerror
+                    delerror:
+                    trap on error noprint " If a composite is being used by another object, it can not be dropped/deleted
+                    _action = joinlines (_action joinchars ('->DELETE ' extlines (_comp_list j 1) ' - Failed'))
+                    _action = joinlines (_action joinchars ('Could not delete (seemingly unused) composite ' extlines (_comp_list j 1) '. It may be in use...'))
+                    noerror:
+                    j = j + 1
+                doend
+            doend
+        doend
+        else do
+            " Delete composite used by partition
+            dlt &_comp_name
+            _action = joinlines (_action joinchars ('->DELETE ' _comp_name))
+            _action = joinlines (_action joinchars ('Partition composite ' _comp_name ' deleted from partition ' _part '.'))
+        doend
+        i = i + 1
+        _anyempty = true
+        _action = joinlines (_action '')
+     doend
+          
+     if _anyempty eq false
+     then do
+         blank
+         shw 'Cube did not have any empty partitions that could be deleted.'
+         blank
+     doend
+     else do
+         " For the record, which actions have been taken
+         "shw '***** Actions taken *****'
+         j = 1
+         while j le numlines (_action)
+         do
+             shw extlines (_action j 1)
+             j = j + 1
+         doend
+         "shw '***** End of report *****' 
+     doend
+     k = k + 1
+doend
+
+blank
+shw 'AW has not been updated/committed.'
+
+return 0
+
+error:
+_action = joinlines (_action errortext)
+blank
+"shw '********** Actions taken **********'
+j = 1
+while j le numlines (_action)
+do
+    shw extlines (_action j 1)
+    j = j + 1
+doend
+
+return -1

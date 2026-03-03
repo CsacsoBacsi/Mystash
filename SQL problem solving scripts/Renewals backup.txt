@@ -1,0 +1,1661 @@
+PROCEDURE sp_prepare_renewals
+IS
+
+v_premise_id      PREMISE.PREMISE_ID%TYPE ;
+v_comp_reg_no     VARCHAR2 (100) ;
+v_entity_id       ENTITY_RELATIONSHIP.ENTITY_ID%TYPE ;
+v_matched_ent     NUMBER ;
+l_renewal_mon     PLS_INTEGER ;
+l_shape_prem_mult NUMBER ; -- Shape Premium Multiplier
+l_3rd_party_cost  NUMBER ; -- 3rd party cost
+l_kva_cost        NUMBER ; -- KVA cost
+l_tp_multiplier   NUMBER ; -- l_shape_prem_mult + l_3rd_party_cost + l_kva_cost
+l_spu_name        VARCHAR2 (100) := 'SP_PREPARE_RENEWALS' ;
+l_run_date        DATE := to_date('01/'||TO_CHAR(SYSDATE,'mm/yyyy'),'dd/mm/yyyy');
+l_accepted_pen    NUMBER;
+l_fuel_1_unit     corp_cc2_request_sub.unit_rate%TYPE;
+l_fuel_2_unit     corp_cc2_request_sub.unit_rate%TYPE;
+l_fuel_3_unit     corp_cc2_request_sub.unit_rate%TYPE;
+l_fuel_4_unit     corp_cc2_request_sub.unit_rate%TYPE;
+l_fuel_5_unit     corp_cc2_request_sub.unit_rate%TYPE;
+
+
+TYPE t_ice_ids IS TABLE OF corp_cc2_wk_renewal_customers.ice_customer_id%TYPE INDEX BY PLS_INTEGER;
+v_ice_ids t_ice_ids;
+
+ice_customer_id_tbl      dbms_sql.Number_Table ;
+quote_id_tbl             dbms_sql.Number_Table ;
+quote_date_tbl           dbms_sql.Date_Table ;
+fuel_type_id_tbl         dbms_sql.Number_Table ;
+contract_duration_tbl    dbms_sql.Number_Table ;
+contract_start_tbl       dbms_sql.Date_Table ;
+contract_end_tbl         dbms_sql.Date_Table ;
+max_ced_tbl              dbms_sql.Date_Table ;
+total_volume_tbl         dbms_sql.Number_Table ;
+total_contract_value_tbl dbms_sql.Number_Table ;
+mpan_mpr_tbl             dbms_sql.Varchar2_Table ;
+
+CURSOR C1 IS
+       SELECT a.ICE_CUSTOMER_ID, a.FULL_NAME
+       FROM   CORP_CC2_WK_RENEWAL_CUSTOMERS a,
+              (SELECT DISTINCT ICE_CUSTOMER_ID
+               FROM CORP_CC2_WK_RENEWAL_CUST_QUOTE) b
+       WHERE  a.ICE_CUSTOMER_ID = b.ICE_CUSTOMER_ID
+       FOR UPDATE OF a.ENTITY_ID ;
+
+BEGIN
+
+    PKG_PAL.SP_SET_SPU_ENTRY (l_spu_name) ;
+    PKG_PAL.SP_SET_CURRENT_ACTION ('Fetching renewals_month value from parameter table.') ;
+
+    FOR i IN (WITH a AS (
+                   SELECT b.fuel_type_id,
+                          a.created_date,
+                          b.unit_rate,
+                          MAX(a.created_date) over(PARTITION BY b.fuel_type_id) max_cd
+                     FROM corp_cc2_request a
+                     JOIN corp_cc2_request_sub b
+                       ON a.request_id = b.request_id
+                      AND b.unit_rate IS NOT NULL)
+               SELECT a.fuel_type_id,
+                      a.unit_rate
+                 FROM a
+                WHERE max_cd = created_date)
+    LOOP
+
+       CASE i.fuel_type_id
+         WHEN 1 THEN
+            l_fuel_1_unit := i.unit_rate;
+         WHEN 2 THEN
+            l_fuel_2_unit := i.unit_rate;
+         WHEN 3 THEN
+            l_fuel_3_unit := i.unit_rate;
+         WHEN 4 THEN
+            l_fuel_4_unit := i.unit_rate;
+         WHEN 5 THEN
+            l_fuel_5_unit := i.unit_rate;
+         ELSE
+           NULL;
+       END CASE;
+
+    END LOOP;
+
+    -- Get renewals month parameter first. Contract End < Sysdate + renewals month
+    sp_get_param(pi_paramname  => 'RENEWALS_MONTH',
+                 po_paramvalue => l_renewal_mon) ;
+
+    sp_get_param(pi_paramname  => 'ACCEPTED_PENDING_MONTH',
+                 po_paramvalue => l_accepted_pen);
+
+    --make accepted pending months negative for use in add_months
+    l_accepted_pen := 0 - l_accepted_pen;
+
+    -- *************************************************
+    -- ******************** Customers ******************
+    -- *************************************************
+
+    PKG_PAL.SP_SET_CURRENT_ACTION ('Truncating renewal customers work table.') ;
+    EXECUTE IMMEDIATE 'TRUNCATE TABLE CORP_CC2_WK_RENEWAL_CUSTOMERS' ;
+
+    PKG_PAL.SP_SET_CURRENT_ACTION ('Populating renewal customers work table.') ;
+    INSERT INTO CORP_CC2_WK_RENEWAL_CUSTOMERS
+           (ICE_CUSTOMER_ID, FULL_NAME, BUILDING_NUMBER, BUILDING_NAME, STREET_ADDRESS,
+            THOROFARE,  DEPENDENT_LOCALITY, TOWN, COUNTY, POSTCODE, COUNTRY, CREATED)
+    WITH cars AS (
+        SELECT /*+ ORDERED USE_HASH (e car) */
+               car.ICE_CUSTOMER_ID,
+               CASE WHEN car.ATTRIBUTE_CODE = 'SECTOR'
+                     AND car.ATTRIBUTE_VALUE_CODE = '3' THEN
+                       1
+                    WHEN car.ATTRIBUTE_CODE = 'SECTOR'
+                     AND car.ATTRIBUTE_VALUE_CODE IN ('1', '2', '4') THEN
+                       2
+                    ELSE 0
+               END AS SECTOR,
+               CASE WHEN car.ATTRIBUTE_CODE = 'CST'
+                     AND car.ATTRIBUTE_VALUE_CODE = 'B2BMM' THEN
+                       1
+                    WHEN car.ATTRIBUTE_CODE = 'CST'
+                     AND car.ATTRIBUTE_VALUE_CODE <> 'B2BMM' THEN
+                       2
+                    ELSE
+                      NULL
+               END AS CST,
+               CASE WHEN car.ATTRIBUTE_CODE = 'CSTDEFAULT'
+                     AND car.ATTRIBUTE_VALUE_CODE = 'B2BMM' THEN
+                       1
+                    WHEN car.ATTRIBUTE_CODE = 'CSTDEFAULT'
+                     AND car.ATTRIBUTE_VALUE_CODE <> 'B2BMM' THEN
+                       2
+                    ELSE
+                      NULL
+               END AS CSTDEFAULT
+          FROM CUSTOMER_ATTRIBUTE_REPOSITORY car
+         WHERE car.ATTRIBUTE_CODE IN ('SECTOR', 'CST', 'CSTDEFAULT')
+               AND l_run_date BETWEEN car.START_DATE AND NVL (car.END_DATE, TO_DATE ('31/12/2999', 'DD/MM/YYYY'))
+    ), cars_max AS (
+        SELECT ICE_CUSTOMER_ID,
+               MAX (SECTOR) AS SECTOR,
+               MAX (CST) AS CST,
+               MAX (CSTDEFAULT) AS CSTDEFAULT
+          FROM cars
+         GROUP BY ICE_CUSTOMER_ID
+    ), cars_filtered AS (
+        SELECT ICE_CUSTOMER_ID
+          FROM cars_max
+         WHERE SECTOR = 2
+            OR (SECTOR = 1 AND
+                NVL (CST, CSTDEFAULT) = 2)
+    ), address AS (
+        SELECT DISTINCT
+               b.ICE_CUSTOMER_ID,
+               p.BUILDING_NUMBER,
+               DECODE (NVL (INSTR (p.BUILDING_NAME, p.BUILDING_NUMBER), 0), 0, p.BUILDING_NAME, NULL) as BUILDING_NAME,
+               LTRIM (RTRIM (DECODE (NVL (INSTR (p.BUILDING_NAME, p.BUILDING_NUMBER), 0), 0, p.BUILDING_NUMBER, p.BUILDING_NAME) ||' '||NVL (s.DEPENDANT_THOROFARE, s.THOROFARE))) as STREET_ADDRESS,
+               NVL (s.DEPENDANT_THOROFARE,
+               s.THOROFARE) as THOROFARE,
+               s.DEPENDANT_LOCALITY as DEPENDENT_LOCALITY,
+               s.TOWN,
+               c.COUNTY,
+               p.POSTCODE,
+               d.DESCRIPTION as COUNTRY,
+               p.PREMISE_ID
+          FROM BASE b,
+               PREMISE p,
+               STREET s,
+               COUNTY c,
+               COUNTRY d
+         WHERE b.BASE_TYPE     = 'C'
+           AND b.PREMISE_ID    = p.PREMISE_ID
+           AND s.STREET_ID     = p.STREET_ID
+           AND c.COUNTY_ID (+) = s.COUNTY_ID
+           AND c.COUNTRY_ID    = d.COUNTRY_ID (+)
+    ), corporates AS (
+        SELECT c.ICE_CUSTOMER_ID, c.FULL_NAME
+          FROM CUSTOMER c,
+               cars_filtered cf
+         WHERE c.ICE_CUSTOMER_ID = cf.ICE_CUSTOMER_ID
+    ), corp_addr AS (
+        SELECT /*+ ORDERED */
+               c.ICE_CUSTOMER_ID, c.FULL_NAME,
+               a.BUILDING_NUMBER, a.BUILDING_NAME, a.STREET_ADDRESS, a.THOROFARE,
+               a.DEPENDENT_LOCALITY, a.TOWN, a.COUNTY, a.POSTCODE, a.COUNTRY,
+               ROW_NUMBER () OVER (PARTITION BY c.ICE_CUSTOMER_ID ORDER BY a.PREMISE_ID DESC) AS rn
+          FROM corporates c,
+               address   a
+         WHERE c.ICE_CUSTOMER_ID = a.ICE_CUSTOMER_ID (+)
+    )   SELECT ICE_CUSTOMER_ID, FULL_NAME,
+               BUILDING_NUMBER, BUILDING_NAME, STREET_ADDRESS, THOROFARE,
+               DEPENDENT_LOCALITY, TOWN, COUNTY, POSTCODE, COUNTRY, SYSDATE
+          FROM corp_addr
+         WHERE RN = 1 ;
+
+    PKG_PAL.SP_SET_PROCESSED_COUNT (SQL%ROWCOUNT) ;
+
+    COMMIT ;
+
+    -- Less non-Live customers
+    DELETE FROM  CORP_CC2_WK_RENEWAL_CUSTOMERS a
+     WHERE a.ICE_CUSTOMER_ID NOT IN (SELECT DISTINCT ICE_CUSTOMER_ID
+                                       FROM BASE
+                                      WHERE BASE_TYPE = 'S'
+                                        AND (
+                                             PRODUCT_STATUS IN ('LI', 'RC', 'PL', 'PG')
+                                             OR(
+                                                PRODUCT_STATUS IN ('LC') AND
+                                                NVL (END_DATE, TO_DATE ('31/12/9999', 'DD/MM/YYYY')) >= TRUNC (l_run_date)
+                                                )
+                                             )
+                                     );
+
+    PKG_PAL.SP_SET_PROCESSED_COUNT (SQL%ROWCOUNT) ;
+    COMMIT ;
+
+    -- *************************************************
+    -- **************** Customer quote *****************
+    -- *************************************************
+
+    PKG_PAL.SP_SET_CURRENT_ACTION ('Truncating customer-quote work table.') ;
+    EXECUTE IMMEDIATE 'TRUNCATE TABLE CORP_CC2_WK_RENEWAL_CUST_QUOTE' ;
+
+    PKG_PAL.SP_SET_CURRENT_ACTION ('Populating customer-quote work table.') ;
+
+    -- T_C_HH_NHH_G
+    INSERT INTO CORP_CC2_WK_RENEWAL_CUST_QUOTE
+           (ICE_CUSTOMER_ID, QUOTE_ID, QUOTE_CREATED, FUEL_TYPE_ID, CONTRACT_START,
+            CONTRACT_END, CONTRACT_DURATION, MAX_CED, QUOTE_TYPE, CREATED)
+    WITH T_C_HH_NHH_G_q AS (
+        SELECT /*+ ORDERED USE_NL (c q) */
+               q.ICE_CUSTOMER_ID,
+               q.QUOTE_ID,
+               q.QUOTE_DATE,
+               q.ESTIMATED_SSD AS CONTRACT_START,
+               add_months (q.ESTIMATED_SSD, CONTRACT_DURATION) AS CONTRACT_END,
+               q.CONTRACT_DURATION
+          FROM CORP_CC2_WK_RENEWAL_CUSTOMERS c,
+               QUOTE q
+         WHERE ((--Accepted
+                 q.QUOTE_OUTCOME_ID IN ('A')
+                    --Less than a year. Eliminate zero CD
+                AND q.CONTRACT_DURATION BETWEEN 1 AND 12)
+               OR (--Accepted pending
+                   q.QUOTE_OUTCOME_ID IN ('P')
+               AND q.CONTRACT_DURATION > 0))
+                -- Tariff quote
+           AND q.QUOTE_MECHANISM_ID IN ('T')
+           AND q.ICE_CUSTOMER_ID = c.ICE_CUSTOMER_ID
+           AND (add_months (q.ESTIMATED_SSD, q.CONTRACT_DURATION) BETWEEN l_run_date
+                                                                      AND add_months (l_run_date, l_renewal_mon) - 1
+                OR q.ESTIMATED_SSD BETWEEN l_run_date
+                                       AND add_months (q.ESTIMATED_SSD, q.CONTRACT_DURATION) -- Has a renewal quote
+                OR l_run_date BETWEEN q.ESTIMATED_SSD
+                                   AND add_months (q.ESTIMATED_SSD, q.CONTRACT_DURATION)) -- We need existing contracts as well for existing exposure
+
+           /*AND (--Up for renewal in renewal period
+                add_months (q.ESTIMATED_SSD, q.CONTRACT_DURATION) BETWEEN l_run_date
+                                                                      AND add_months (l_run_date, l_renewal_mon + 1) - 1
+               OR q.ESTIMATED_SSD BETWEEN  q.ESTIMATED_SSD
+                                      AND add_months (q.ESTIMATED_SSD, q.CONTRACT_DURATION) --Accepted Pending
+                --OR q.ESTIMATED_SSD > TO_DATE ('01' || TO_CHAR (TRUNC (l_run_date), 'MM/YYYY'), 'DD/MM/YYYY')  -- Has a renewal quote
+                   -- We need existing contracts as well for existing exposure
+                OR l_run_date BETWEEN ADD_MONTHS(q.ESTIMATED_SSD, l_accepted_pen)
+                                  AND add_months (ADD_MONTHS(q.ESTIMATED_SSD, l_accepted_pen), q.CONTRACT_DURATION))
+*/    ), T_C_HH_NHH_G_all_q AS (
+       SELECT /*+ ORDERED USE_NL (t qp) */
+              DISTINCT qp.ICE_CUSTOMER_ID, qp.QUOTE_ID, t.QUOTE_DATE, -- qpr contains duplicates!
+              CASE
+                WHEN qp.KEY_TYPE IN (1, 15)
+                 AND qpr.PROFILE_CLASS = '00' THEN
+                     1 -- Profile class '00' = HH
+                WHEN qp.KEY_TYPE IN (1, 15)
+                 AND qpr.PROFILE_CLASS <> '00' THEN
+                     3 -- NHH
+                WHEN qp.KEY_TYPE IN (2, 14) THEN
+                     2 -- Gas
+                ELSE
+                    5
+              END AS FUEL_TYPE_ID, -- Unknown
+              CONTRACT_START,
+              CONTRACT_END,
+              CONTRACT_DURATION
+         FROM T_C_HH_NHH_G_q t,
+              QUOTE_PRODUCT qp,
+              QUOTE_PRODUCT_REFERENCE qpr
+        WHERE qp.QUOTE_PRODUCT_ID = qpr.QUOTE_PRODUCT_ID
+          AND qp.ICE_CUSTOMER_ID = t.ICE_CUSTOMER_ID
+          AND qp.QUOTE_ID = t.QUOTE_ID
+    ), T_C_HH_NHH_G_max_q AS (
+        SELECT ICE_CUSTOMER_ID,
+               QUOTE_ID,
+               QUOTE_DATE,
+               FUEL_TYPE_ID,
+               CONTRACT_START,
+               CONTRACT_END,
+               CONTRACT_DURATION,
+               FIRST_VALUE (QUOTE_ID) OVER (PARTITION BY ICE_CUSTOMER_ID,
+                                                         FUEL_TYPE_ID,
+                                                         CONTRACT_START,
+                                                         CONTRACT_END
+                                                ORDER BY QUOTE_DATE DESC) AS LATEST_QUOTE,
+               MAX (CONTRACT_END) OVER (PARTITION BY ICE_CUSTOMER_ID,
+                                                     FUEL_TYPE_ID) AS MAX_CED
+        FROM   T_C_HH_NHH_G_all_q
+    )   SELECT ICE_CUSTOMER_ID,
+               QUOTE_ID,
+               QUOTE_DATE,
+               FUEL_TYPE_ID,
+               CONTRACT_START,
+               CONTRACT_END,
+               CONTRACT_DURATION,
+               MAX_CED,
+               'T_C_HH_NHH_G',
+               l_run_date
+          FROM T_C_HH_NHH_G_max_q
+         WHERE QUOTE_ID = LATEST_QUOTE ;
+
+    PKG_PAL.SP_SET_PROCESSED_COUNT (SQL%ROWCOUNT) ;
+    COMMIT ;
+
+    -- T_A_NHH_G
+    INSERT INTO CORP_CC2_WK_RENEWAL_CUST_QUOTE
+           (ICE_CUSTOMER_ID,
+            QUOTE_ID,
+            QUOTE_CREATED,
+            FUEL_TYPE_ID,
+            CONTRACT_START,
+            CONTRACT_END,
+            CONTRACT_DURATION,
+            MAX_CED,
+            QUOTE_TYPE,
+            CREATED)
+    WITH T_A_NHH_G_q AS (
+        SELECT qp.ICE_CUSTOMER_ID, qp.QUOTE_ID,
+               CASE
+                 WHEN qp.KEY_TYPE IN (1, 15) THEN
+                    3 -- NHH
+                 WHEN qp.KEY_TYPE IN (2, 14) THEN
+                    2 -- Gas
+                 ELSE
+                   5
+               END AS FUEL_TYPE_ID -- Unknown (fuel type needed for max (ced))
+          FROM QUOTE_PRODUCT qp,
+               QUOTE_PRODUCT_REFERENCE qpr
+         WHERE qp.QUOTE_PRODUCT_ID = qpr.QUOTE_PRODUCT_ID
+           AND qpr.PROFILE_CLASS <> '00' -- NHH only
+    ), T_A_NHH_G_all_q AS (
+        SELECT /*+ ORDERED USE_NL (c q) */
+               DISTINCT q.ICE_CUSTOMER_ID,
+               q.QUOTE_ID,
+               q.QUOTE_DATE,
+               FUEL_TYPE_ID,
+               q.ESTIMATED_SSD AS CONTRACT_START,
+               add_months (q.ESTIMATED_SSD, CONTRACT_DURATION) AS CONTRACT_END,
+               q.CONTRACT_DURATION
+          FROM CORP_CC2_WK_RENEWAL_CUSTOMERS c,
+               QUOTE q,
+               T_A_NHH_G_q t
+         WHERE q.QUOTE_OUTCOME_ID   IN ('A', 'P') -- Accepted, Accepted Pending
+           AND q.QUOTE_MECHANISM_ID IN ('T') -- Tariff based quote
+           AND q.CONTRACT_DURATION  > 12 -- Beyond 1 year
+           AND q.ICE_CUSTOMER_ID    = t.ICE_CUSTOMER_ID
+           AND q.QUOTE_ID           = t.QUOTE_ID
+           AND q.ICE_CUSTOMER_ID    = c.ICE_CUSTOMER_ID
+           AND (add_months (q.ESTIMATED_SSD, q.CONTRACT_DURATION) BETWEEN l_run_date
+                                                                      AND add_months (l_run_date, l_renewal_mon) - 1
+                OR q.ESTIMATED_SSD BETWEEN l_run_date
+                                       AND add_months (q.ESTIMATED_SSD, q.CONTRACT_DURATION) -- Has a renewal quote
+                OR l_run_date BETWEEN q.ESTIMATED_SSD
+                                  AND add_months (q.ESTIMATED_SSD, q.CONTRACT_DURATION)) -- We need existing contracts as well for existing exposure
+    ), T_A_NHH_G_max_q AS (
+        SELECT ICE_CUSTOMER_ID,
+               QUOTE_ID,
+               QUOTE_DATE,
+               FUEL_TYPE_ID,
+               CONTRACT_START,
+               CONTRACT_END,
+               CONTRACT_DURATION,
+               FIRST_VALUE (QUOTE_ID) OVER (PARTITION BY ICE_CUSTOMER_ID,
+                                                         FUEL_TYPE_ID,
+                                                         CONTRACT_START,
+                                                         CONTRACT_END
+                                                ORDER BY QUOTE_DATE DESC) AS LATEST_QUOTE,
+               MAX (CONTRACT_END) OVER (PARTITION BY ICE_CUSTOMER_ID,
+                                                     FUEL_TYPE_ID) AS MAX_CED
+        FROM   T_A_NHH_G_all_q
+    )   SELECT ICE_CUSTOMER_ID,
+               QUOTE_ID,
+               QUOTE_DATE,
+               FUEL_TYPE_ID,
+               CONTRACT_START,
+               CONTRACT_END,
+               CONTRACT_DURATION,
+               MAX_CED,
+               'T_A_NHH_G',
+               l_run_date
+          FROM T_A_NHH_G_max_q
+         WHERE QUOTE_ID = LATEST_QUOTE ;
+
+    PKG_PAL.SP_SET_PROCESSED_COUNT (SQL%ROWCOUNT) ;
+    COMMIT ;
+
+    -- B_C_HH_NHH_G
+    WITH B_C_HH_NHH_G_q AS (
+        SELECT /*+ USE_NL (c q) */
+               DISTINCT q.ICE_CUSTOMER_ID,
+               q.QUOTE_ID,
+               q.QUOTE_DATE,
+               q.ESTIMATED_SSD AS CONTRACT_START,
+               add_months (q.ESTIMATED_SSD, CONTRACT_DURATION) AS CONTRACT_END,
+               q.CONTRACT_DURATION
+          FROM CORP_CC2_WK_RENEWAL_CUSTOMERS c,
+               QUOTE q
+         WHERE ((q.QUOTE_OUTCOME_ID IN ('A') -- Accepted, Accepted pending
+                AND q.CONTRACT_DURATION BETWEEN 1 AND 12) -- Less than a year. Eliminate zero CD
+               OR (q.QUOTE_OUTCOME_ID IN ('P') -- Accepted, Accepted pending
+                AND q.CONTRACT_DURATION > 0))
+           AND q.QUOTE_MECHANISM_ID IN ('B', 'K') -- Bespoke
+           AND c.ICE_CUSTOMER_ID    = q.ICE_CUSTOMER_ID
+           AND (add_months (q.ESTIMATED_SSD, q.CONTRACT_DURATION) BETWEEN l_run_date
+                                                                      AND add_months (l_run_date, l_renewal_mon) - 1
+                OR q.ESTIMATED_SSD BETWEEN  l_run_date
+                                       AND add_months (q.ESTIMATED_SSD, q.CONTRACT_DURATION) -- Has a renewal quote
+                OR l_run_date BETWEEN q.ESTIMATED_SSD
+                                   AND add_months (q.ESTIMATED_SSD, q.CONTRACT_DURATION)) -- We need existing contracts as well for existing exposure
+    ), B_C_HH_NHH_G_all_q AS (
+        SELECT /*+ DRIVING_SITE (qgm) */
+               DISTINCT q.ICE_CUSTOMER_ID, q.QUOTE_ID, q.QUOTE_DATE,
+               CASE
+                 WHEN qgm.PROFILE_CLASS = '00' THEN
+                    1 -- HH
+                 ELSE
+                    3
+               END AS FUEL_TYPE_ID, -- NHH
+               q.CONTRACT_START,
+               q.CONTRACT_END,
+               q.CONTRACT_DURATION
+          FROM B_C_HH_NHH_G_q q
+          LEFT OUTER JOIN GBP.GBP_QUOTE_GROUP_MPAN@SPPRPW01_GBP.WORLD qgm
+            ON q.ICE_CUSTOMER_ID     = qgm.ICE_CUSTOMER_ID
+           AND q.QUOTE_ID            = qgm.QUOTE_ID
+           AND qgm.VALID_FOR_PRICING = 'Y'
+           AND qgm.INCLUDED_IN_QUOTE = 'Y'
+        UNION ALL
+        SELECT /*+ DRIVING_SITE (qgs) */
+               DISTINCT q.ICE_CUSTOMER_ID,
+               q.QUOTE_ID,
+               q.QUOTE_DATE,
+               2 AS FUEL_TYPE_ID, -- Gas
+               q.CONTRACT_START,
+               q.CONTRACT_END,
+               q.CONTRACT_DURATION
+          FROM B_C_HH_NHH_G_q q
+          LEFT OUTER JOIN GBP.GBP_QUOTE_GROUP_SITE@SPPRPW01_GBP.WORLD qgs
+            ON q.ICE_CUSTOMER_ID     = qgs.ICE_CUSTOMER_ID
+           AND q.QUOTE_ID            = qgs.QUOTE_ID
+           AND qgs.INCLUDED_IN_QUOTE = 'Y'
+    ), B_C_HH_NHH_G_max_q AS (
+        SELECT ICE_CUSTOMER_ID,
+               QUOTE_ID,
+               QUOTE_DATE,
+               FUEL_TYPE_ID,
+               CONTRACT_START,
+               CONTRACT_END,
+               CONTRACT_DURATION,
+               MAX (CONTRACT_END) OVER (PARTITION BY ICE_CUSTOMER_ID,
+                                                     FUEL_TYPE_ID) AS MAX_CED
+          FROM B_C_HH_NHH_G_all_q
+    )   SELECT ICE_CUSTOMER_ID,
+               QUOTE_ID,
+               QUOTE_DATE,
+               FUEL_TYPE_ID,
+               CONTRACT_START,
+               CONTRACT_END,
+               CONTRACT_DURATION,
+               MAX_CED
+          BULK COLLECT
+          INTO ice_customer_id_tbl,
+               quote_id_tbl,
+               quote_date_tbl,
+               fuel_type_id_tbl,
+               contract_start_tbl,
+               contract_end_tbl,
+               contract_duration_tbl,
+               max_ced_tbl
+          FROM B_C_HH_NHH_G_max_q
+         WHERE ice_customer_id IS NOT NULL
+           AND quote_id IS NOT NULL;
+
+    IF ice_customer_id_tbl.COUNT > 0 THEN
+
+        FORALL i IN ice_customer_id_tbl.FIRST .. ice_customer_id_tbl.LAST
+           INSERT
+             INTO CORP_CC2_WK_RENEWAL_CUST_QUOTE
+                 (ICE_CUSTOMER_ID,
+                  QUOTE_ID,
+                  QUOTE_CREATED,
+                  FUEL_TYPE_ID,
+                  CONTRACT_START,
+                  CONTRACT_END,
+                  CONTRACT_DURATION,
+                  MAX_CED,
+                  QUOTE_TYPE,
+                  CREATED)
+           VALUES (ice_customer_id_tbl(i),
+                   quote_id_tbl(i),
+                   quote_date_tbl(i),
+                   fuel_type_id_tbl(i),
+                   contract_Start_tbl(i),
+                   contract_end_tbl(i),
+                   contract_duration_tbl(i),
+                   max_ced_tbl(i),
+                   'B_C_HH_NHH_G',
+                   l_run_date) ;
+
+    END IF ;
+
+    PKG_PAL.SP_SET_PROCESSED_COUNT (ice_customer_id_tbl.COUNT) ;
+    COMMIT ;
+
+    ice_customer_id_tbl.DELETE;
+    quote_id_tbl.DELETE;
+    quote_date_tbl.DELETE;
+    fuel_type_id_tbl.DELETE;
+    contract_start_tbl.DELETE;
+    contract_end_tbl.DELETE;
+    contract_duration_tbl.DELETE;
+    max_ced_tbl.DELETE;
+
+    -- B_A_NHH_G
+    WITH B_A_NHH_G_q AS (
+        SELECT /*+ USE_NL (c q) */
+               q.ICE_CUSTOMER_ID, q.QUOTE_ID, q.QUOTE_DATE,
+               q.ESTIMATED_SSD AS CONTRACT_START,
+               add_months (q.ESTIMATED_SSD, CONTRACT_DURATION) AS CONTRACT_END,
+               q.CONTRACT_DURATION
+          FROM QUOTE q,
+               CORP_CC2_WK_RENEWAL_CUSTOMERS c
+         WHERE q.QUOTE_OUTCOME_ID   IN ('A', 'P') -- Aceepted, Accepted Pending
+           AND q.QUOTE_MECHANISM_ID IN ('B', 'K') -- Bespoke
+           AND q.CONTRACT_DURATION  > 12 -- Beyond 1 year
+           AND c.ICE_CUSTOMER_ID    = q.ICE_CUSTOMER_ID
+           AND (add_months (q.ESTIMATED_SSD, q.CONTRACT_DURATION) BETWEEN l_run_date
+                                                                      AND add_months (l_run_date, l_renewal_mon) - 1
+                OR q.ESTIMATED_SSD BETWEEN l_run_date
+                                       AND add_months (q.ESTIMATED_SSD, q.CONTRACT_DURATION) -- Has a renewal quote
+                OR l_run_date BETWEEN q.ESTIMATED_SSD
+                                   AND add_months (q.ESTIMATED_SSD, q.CONTRACT_DURATION)) -- We need existing contracts as well for existing exposure
+    ), B_A_NHH_G_all_q AS (
+        SELECT /*+ DRIVING_SITE (qgm) */
+               DISTINCT q.ICE_CUSTOMER_ID,
+               q.QUOTE_ID,
+               q.QUOTE_DATE,
+               3 AS FUEL_TYPE_ID, -- NHH
+               q.CONTRACT_START,
+               q.CONTRACT_END,
+               q.CONTRACT_DURATION
+          FROM B_A_NHH_G_q q,
+               GBP.GBP_QUOTE_GROUP_MPAN@SPPRPW01_GBP.WORLD qgm
+         WHERE PROFILE_CLASS         <> '00'
+           AND q.ICE_CUSTOMER_ID     = qgm.ICE_CUSTOMER_ID
+           AND q.QUOTE_ID            = qgm.QUOTE_ID
+           AND qgm.VALID_FOR_PRICING = 'Y'
+           AND qgm.INCLUDED_IN_QUOTE = 'Y'
+        UNION ALL
+        SELECT /*+ DRIVING_SITE (qgs) */
+               DISTINCT q.ICE_CUSTOMER_ID,
+               q.QUOTE_ID,
+               QUOTE_DATE,
+               2 AS FUEL_TYPE_ID, -- Gas
+               q.CONTRACT_START,
+               q.CONTRACT_END,
+               q.CONTRACT_DURATION
+          FROM B_A_NHH_G_q q,
+               GBP.GBP_QUOTE_GROUP_SITE@SPPRPW01_GBP.WORLD qgs
+         WHERE q.ICE_CUSTOMER_ID     = qgs.ICE_CUSTOMER_ID
+           AND q.QUOTE_ID            = qgs.QUOTE_ID
+           AND qgs.INCLUDED_IN_QUOTE = 'Y'
+    ), B_A_NHH_G_max_q AS (
+        SELECT ICE_CUSTOMER_ID,
+               QUOTE_ID,
+               QUOTE_DATE,
+               FUEL_TYPE_ID,
+               CONTRACT_START,
+               CONTRACT_END,
+               CONTRACT_DURATION,
+               FIRST_VALUE (QUOTE_ID) OVER (PARTITION BY ICE_CUSTOMER_ID,
+                                                         FUEL_TYPE_ID,
+                                                         CONTRACT_START,
+                                                         CONTRACT_END
+                                                ORDER BY QUOTE_DATE DESC) AS LATEST_QUOTE,
+               MAX (CONTRACT_END) OVER (PARTITION BY ICE_CUSTOMER_ID,
+                                                     FUEL_TYPE_ID) AS MAX_CED
+        FROM   B_A_NHH_G_all_q
+    )   SELECT ICE_CUSTOMER_ID,
+               QUOTE_ID,
+               QUOTE_DATE,
+               FUEL_TYPE_ID,
+               CONTRACT_START,
+               CONTRACT_END,
+               CONTRACT_DURATION,
+               MAX_CED
+               BULK COLLECT
+               INTO ice_customer_id_tbl,
+                    quote_id_tbl,
+                    quote_date_tbl,
+                    fuel_type_id_tbl,
+                    contract_start_tbl,
+                    contract_end_tbl,
+                    contract_duration_tbl,
+                    max_ced_tbl
+          FROM B_A_NHH_G_max_q
+         WHERE QUOTE_ID = LATEST_QUOTE ;
+
+    IF ice_customer_id_tbl.COUNT > 0 THEN
+
+        FORALL i IN ice_customer_id_tbl.FIRST .. ice_customer_id_tbl.LAST
+           INSERT
+             INTO CORP_CC2_WK_RENEWAL_CUST_QUOTE
+                      (ICE_CUSTOMER_ID,
+                       QUOTE_ID,
+                       QUOTE_CREATED,
+                       FUEL_TYPE_ID,
+                       CONTRACT_START,
+                       CONTRACT_END,
+                       CONTRACT_DURATION,
+                       MAX_CED,
+                       QUOTE_TYPE,
+                       CREATED)
+            VALUES (ice_customer_id_tbl(i),
+                    quote_id_tbl(i),
+                    quote_date_tbl(i),
+                    fuel_type_id_tbl(i),
+                    contract_start_tbl(i),
+                    contract_end_tbl(i),
+                    contract_duration_tbl(i),
+                    max_ced_tbl(i),
+                    'B_A_NHH_G',
+                    l_run_date) ;
+
+    END IF ;
+
+    PKG_PAL.SP_SET_PROCESSED_COUNT (ice_customer_id_tbl.COUNT) ;
+    COMMIT ;
+
+    ice_customer_id_tbl.DELETE;
+    quote_id_tbl.DELETE;
+    quote_date_tbl.DELETE;
+    fuel_type_id_tbl.DELETE;
+    contract_start_tbl.DELETE;
+    contract_end_tbl.DELETE;
+    contract_duration_tbl.DELETE;
+    max_ced_tbl.DELETE;
+
+    -- B_A_HH
+    WITH B_A_HH_q AS (
+        SELECT /*+ USE_NL (c q) */
+               q.ICE_CUSTOMER_ID,
+               q.QUOTE_ID,
+               q.QUOTE_DATE,
+               q.ESTIMATED_SSD AS CONTRACT_START,
+               add_months (q.ESTIMATED_SSD, q.CONTRACT_DURATION) AS CONTRACT_END,
+               q.CONTRACT_DURATION
+          FROM CORP_CC2_WK_RENEWAL_CUSTOMERS c,
+               QUOTE q
+         WHERE q.QUOTE_OUTCOME_ID   IN ('A', 'P') -- Accepted, Accepted Pending
+           AND q.QUOTE_MECHANISM_ID IN ('B', 'K') -- Bespoke
+           AND q.CONTRACT_DURATION  > 12 -- Beyond 1 year
+           AND q.ICE_CUSTOMER_ID    = c.ICE_CUSTOMER_ID
+           AND (add_months (q.ESTIMATED_SSD, q.CONTRACT_DURATION) BETWEEN l_run_date
+                                                                      AND add_months (l_run_date, l_renewal_mon) - 1
+                OR q.ESTIMATED_SSD BETWEEN l_run_date
+                                       AND add_months (q.ESTIMATED_SSD, q.CONTRACT_DURATION) -- Has a renewal quote
+                OR l_run_date BETWEEN q.ESTIMATED_SSD
+                                   AND add_months (q.ESTIMATED_SSD, q.CONTRACT_DURATION)) -- We need existing contracts as well for existing exposure
+   ), B_A_HH_all_q AS (
+        SELECT /*+ DRIVING_SITE (qgm) */
+               DISTINCT q.ICE_CUSTOMER_ID,
+               q.QUOTE_ID,
+               q.QUOTE_DATE,
+               1 FUEL_TYPE_ID, -- HH
+               q.CONTRACT_START,
+               q.CONTRACT_END,
+               q.CONTRACT_DURATION
+          FROM B_A_HH_q q,
+               GBP.GBP_QUOTE_GROUP_MPAN@SPPRPW01_GBP.WORLD qgm
+         WHERE PROFILE_CLASS         = '00' -- HH
+           AND q.ICE_CUSTOMER_ID     = qgm.ICE_CUSTOMER_ID
+           AND q.QUOTE_ID            = qgm.QUOTE_ID
+           AND qgm.VALID_FOR_PRICING = 'Y'
+           AND qgm.INCLUDED_IN_QUOTE = 'Y'
+    ), B_A_HH_max_q AS (
+        SELECT ICE_CUSTOMER_ID,
+               QUOTE_ID,
+               QUOTE_DATE,
+               FUEL_TYPE_ID,
+               CONTRACT_START,
+               CONTRACT_END,
+               CONTRACT_DURATION,
+               FIRST_VALUE (QUOTE_ID) OVER (PARTITION BY ICE_CUSTOMER_ID,
+                                                         FUEL_TYPE_ID,
+                                                         CONTRACT_START,
+                                                         CONTRACT_END
+                                                ORDER BY QUOTE_DATE DESC) AS LATEST_QUOTE,
+               MAX (CONTRACT_END) OVER (PARTITION BY ICE_CUSTOMER_ID,
+                                                     FUEL_TYPE_ID) AS MAX_CED
+        FROM   B_A_HH_all_q
+    )   SELECT ICE_CUSTOMER_ID,
+               QUOTE_ID,
+               QUOTE_DATE,
+               FUEL_TYPE_ID,
+               CONTRACT_START,
+               CONTRACT_END,
+               CONTRACT_DURATION,
+               MAX_CED
+               BULK COLLECT
+               INTO ice_customer_id_tbl,
+                    quote_id_tbl,
+                    quote_date_tbl,
+                    fuel_type_id_tbl,
+                    contract_start_tbl,
+                    contract_end_tbl,
+                    contract_duration_tbl,
+                    max_ced_tbl
+        FROM   B_A_HH_max_q
+        WHERE  QUOTE_ID = LATEST_QUOTE ;
+
+    IF ice_customer_id_tbl.COUNT > 0 THEN
+
+        FORALL i IN ice_customer_id_tbl.FIRST .. ice_customer_id_tbl.LAST
+           INSERT
+             INTO CORP_CC2_WK_RENEWAL_CUST_QUOTE
+                 (ICE_CUSTOMER_ID, QUOTE_ID,
+                  QUOTE_CREATED, FUEL_TYPE_ID,
+                  CONTRACT_START, CONTRACT_END,
+                  CONTRACT_DURATION, MAX_CED,
+                  QUOTE_TYPE, CREATED)
+           VALUES (ice_customer_id_tbl(i),   quote_id_tbl (i),
+                   quote_date_tbl(i),        fuel_type_id_tbl (i),
+                   contract_start_tbl(i),    contract_end_tbl (i),
+                   contract_duration_tbl(i), max_ced_tbl (i),
+                   'B_A_HH',                 l_run_date) ;
+
+    END IF ;
+
+    PKG_PAL.SP_SET_PROCESSED_COUNT (ice_customer_id_tbl.COUNT) ;
+    COMMIT ;
+
+    ice_customer_id_tbl.DELETE;
+    quote_id_tbl.DELETE;
+    quote_date_tbl.DELETE;
+    fuel_type_id_tbl.DELETE;
+    contract_start_tbl.DELETE;
+    contract_end_tbl.DELETE;
+    contract_duration_tbl.DELETE;
+    max_ced_tbl.DELETE;
+
+    -- Delete those already renewed (a particular fuel type)
+    PKG_PAL.SP_SET_CURRENT_ACTION ('Deleting customer quotes of same fuel type where customer renewed already that fuel type.') ;
+
+    PKG_PAL.SP_SET_PROCESSED_COUNT (SQL%ROWCOUNT) ;
+    COMMIT ;
+
+    PKG_PAL.SP_SET_CURRENT_ACTION ('Identifying entities in renewal customers work table.') ;
+
+    -- Try fetching entity id for every ICE customer id
+    -- The list of customers (cursor C1) is now smaller as only those considered that are up for a renewal
+    --JB fix 09/06/2011 - 2.5
+
+     SELECT a.ICE_CUSTOMER_ID
+      BULK COLLECT
+      INTO v_ice_ids
+      FROM CORP_CC2_WK_RENEWAL_CUSTOMERS a,
+           (SELECT DISTINCT ICE_CUSTOMER_ID
+              FROM CORP_CC2_WK_RENEWAL_CUST_QUOTE) b
+     WHERE a.ICE_CUSTOMER_ID = b.ICE_CUSTOMER_ID
+       FOR UPDATE OF a.ENTITY_ID;
+
+     FOR c1_rec IN v_ice_ids.first .. v_ice_ids.last LOOP
+
+        BEGIN
+
+          SELECT entity_id
+            INTO v_entity_id
+            FROM entity_relationship
+           WHERE ice_customer_id = v_ice_ids(c1_rec);
+
+        EXCEPTION
+          WHEN OTHERS THEN
+
+            v_entity_id := NULL ;
+            sp_get_ici_related_ids (pi_ice_customer_id => v_ice_ids(c1_rec),
+                                    po_entity_id       => v_entity_id,
+                                    po_premise_id      => v_premise_id,
+                                    po_company_reg_no  => v_comp_reg_no) ;
+
+        END;
+
+        IF v_entity_id IS NOT NULL THEN
+            UPDATE CORP_CC2_WK_RENEWAL_CUSTOMERS
+               SET ENTITY_ID       = v_entity_id
+             WHERE ice_customer_id =  v_ice_ids(c1_rec);
+        END IF ;
+
+    END LOOP ;
+
+    COMMIT ;
+
+    -- *************************************************
+    -- **************** Transfer prices ****************
+    -- *************************************************
+
+    PKG_PAL.SP_SET_CURRENT_ACTION ('Truncating transfer price work table.') ;
+    EXECUTE IMMEDIATE 'TRUNCATE TABLE CORP_CC2_WK_RENEWAL_TP' ;
+
+    PKG_PAL.SP_SET_CURRENT_ACTION ('Fetching transfer price related parameters.') ;
+    sp_get_param ('TP_SHAPE_PREM_MULTIPLIER', l_shape_prem_mult) ;
+    sp_get_param ('TP_3RD_PARTY_COST',        l_3rd_party_cost) ;
+    sp_get_param ('TP_KVA_COST',              l_kva_cost) ;
+
+    PKG_PAL.SP_SET_CURRENT_ACTION ('Inserting into electricity transfer price work table.') ;
+
+    INSERT INTO CORP_CC2_WK_RENEWAL_TP
+           (MONTH, FROM_DATE, TO_DATE, ADJ_YEAR, MONTHLY_AVG, MONTH_NUM, FUEL_TYPE)
+    WITH tp_base AS ( -- Get daily averages for non-archived, standard transfer prices
+        SELECT t.TP_ID, SETTLEMENT_DATE, to_char (settlement_date, 'MON-YYYY') AS MONTH, DATE_LOADED,
+               (t.HH01 + t.HH02 + t.HH03 + t.HH04 + t.HH05 + t.HH06 + t.HH07 + t.HH08 + t.HH09 + t.HH10 +
+                t.HH11 + t.HH12 + t.HH13 + t.HH14 + t.HH15 + t.HH16 + t.HH17 + t.HH18 + t.HH19 + t.HH20 +
+                t.HH21 + t.HH22 + t.HH23 + t.HH24 + t.HH25 + t.HH26 + t.HH27 + t.HH28 + t.HH29 + t.HH30 +
+                t.HH31 + t.HH32 + t.HH33 + t.HH34 + t.HH35 + t.HH36 + t.HH37 + t.HH38 + t.HH39 + t.HH40 +
+                t.HH41 + t.HH42 + t.HH43 + t.HH44 + t.HH45 + t.HH46 + t.HH47 + t.HH48) / 48 AS DAILY_AVG,
+               MAX (DATE_LOADED) OVER (PARTITION BY t.TP_ID, t.SETTLEMENT_DATE) MAX_DATE_LOADED
+          FROM gbp.GBP_ELEC_TRNSFR_PRICE_CNTRL@SPPRPW01.WORLD c,
+               (SELECT TP_ID, SETTLEMENT_DATE,
+                       HH01, HH02, HH03, HH04, HH05, HH06, HH07, HH08, HH09, HH10,
+                       HH11, HH12, HH13, HH14, HH15, HH16, HH17, HH18, HH19, HH20,
+                       HH21, HH22, HH23, HH24, HH25, HH26, HH27, HH28, HH29, HH30,
+                       HH31, HH32, HH33, HH34, HH35, HH36, HH37, HH38, HH39, HH40,
+                       HH41, HH42, HH43, HH44, HH45, HH46, HH47, HH48
+                  FROM gbp.GBP_ELEC_TRANSFER_PRICE@SPPRPW01.WORLD t
+                 UNION
+                SELECT TP_ID, SETTLEMENT_DATE,
+                       HH01, HH02, HH03, HH04, HH05, HH06, HH07, HH08, HH09, HH10,
+                       HH11, HH12, HH13, HH14, HH15, HH16, HH17, HH18, HH19, HH20,
+                       HH21, HH22, HH23, HH24, HH25, HH26, HH27, HH28, HH29, HH30,
+                       HH31, HH32, HH33, HH34, HH35, HH36, HH37, HH38, HH39, HH40,
+                       HH41, HH42, HH43, HH44, HH45, HH46, HH47, HH48
+                FROM   gbp.GBP_ELEC_TRANSFER_PRICE_HIST@SPPRPW01.WORLD t) t
+         WHERE GBP_TRANSFER_PRICE_TYPE = 'STD'
+           AND DATE_ARCHIVED           IS NULL
+           AND c.TP_ID                 = t.TP_ID
+    ), tp_min_max AS ( -- Get start and end dates for each month
+        SELECT MONTH, DAILY_AVG
+          FROM tp_base
+         WHERE DATE_LOADED = MAX_DATE_LOADED
+    ), cal_base AS ( -- Generate a calendar from sysdate to sysdate + 6 years (72 months)
+        SELECT /*+ materialize */
+               ADD_MONTHS (SYSDATE, -12) + LEVEL - 1 AS CAL_DATE, -- To make sure we have at least a year worth of transfer prices (to extrapolate)
+               TO_CHAR (ADD_MONTHS (SYSDATE, 12) + LEVEL - 1, 'MON-YYYY') AS MONTH
+          FROM dual
+        CONNECT BY ADD_MONTHS (SYSDATE, -12) + LEVEL <= ADD_MONTHS (SYSDATE, 72)
+    ), cal_month AS ( -- Get start and end date for each month
+        SELECT DISTINCT MONTH,
+               MIN (TRUNC (CAL_DATE)) OVER (PARTITION BY MONTH) AS FROM_DATE,
+               MAX (TRUNC (CAL_DATE)) OVER (PARTITION BY MONTH) AS TO_DATE
+          FROM cal_base cb
+    ), cal AS ( -- Rank result (sequence)
+        SELECT MONTH, FROM_DATE, TO_DATE,
+               DENSE_RANK () OVER (ORDER BY FROM_DATE) AS RANK
+          FROM cal_month
+    ), tp AS ( -- Calculate monthly averages
+        SELECT MONTH, AVG (DAILY_AVG) AS MONTHLY_AVG
+          FROM tp_min_max
+         GROUP BY MONTH
+    ), merged AS ( -- Merge the calendar and existing transfer prices
+        SELECT NVL (tp.MONTH, c.MONTH) AS MONTH,
+               c.FROM_DATE AS FROM_DATE,
+               c.TO_DATE AS TO_DATE,
+               c.RANK AS C_RANK,
+               tp.MONTHLY_AVG
+          FROM tp tp
+         RIGHT OUTER JOIN
+               cal c
+            ON c.MONTH = tp.MONTH
+    ), offsets AS( -- Find first month that has no data
+        SELECT MONTH, FROM_DATE, TO_DATE, C_RANK,
+               (SELECT MIN (C_RANK) FROM merged WHERE MONTHLY_AVG IS NULL) AS MIN_RANK,
+               MONTHLY_AVG
+          FROM merged
+    ), adjusted AS ( -- For extrapolated months, calculate distance from values to be copied
+        SELECT MONTH, FROM_DATE, TO_DATE,
+               CASE WHEN C_RANK < MIN_RANK THEN 0 ELSE TRUNC ((C_RANK + 12 - MIN_RANK) / 12) END AS ADJ_YEAR,
+               MONTHLY_AVG, C_RANK AS MONTH_NUM
+          FROM offsets
+    )   SELECT MONTH, FROM_DATE, TO_DATE, ADJ_YEAR, -- Actual or if not present, extrapolated averages
+               CASE
+                 WHEN MONTHLY_AVG IS NOT NULL THEN
+                      MONTHLY_AVG
+                 ELSE
+                      LAG (MONTHLY_AVG, (ADJ_YEAR * 12)) OVER (ORDER BY FROM_DATE ASC)
+               END AS MONTHLY_AVG,
+               MONTH_NUM, 'E' AS FUEL_TYPE
+          FROM adjusted
+         ORDER BY FROM_DATE ;
+
+    PKG_PAL.SP_SET_PROCESSED_COUNT (SQL%ROWCOUNT) ;
+
+    COMMIT ;
+
+    PKG_PAL.SP_SET_CURRENT_ACTION ('Inserting into gas transfer price work table.') ;
+
+    INSERT INTO CORP_CC2_WK_RENEWAL_TP
+           (MONTH, FROM_DATE, TO_DATE, ADJ_YEAR, MONTHLY_AVG, MONTH_NUM, FUEL_TYPE)
+    WITH tp_base AS ( -- Get daily averages for non-archived, standard transfer prices
+        SELECT TO_CHAR (START_DATE, 'MON-YYYY') AS MONTH,
+               CREATED_DATE AS DATE_LOADED,
+               PRICE AS MONTHLY_AVG,
+               MAX (CREATED_DATE) OVER (PARTITION BY START_DATE) MAX_DATE_LOADED
+          FROM   (SELECT START_DATE,
+                         PRICE,
+                         CREATED_DATE,
+                         SITE_TYPE
+                    FROM gbp.GBP_GAS_PRICE@SPPRPW01.WORLD
+                   WHERE SITE_TYPE = 'IC1'
+                   UNION
+                  SELECT START_DATE,
+                         PRICE,
+                         CREATED_DATE,
+                         SITE_TYPE
+                    FROM gbp.GBP_GAS_PRICE_HIST@SPPRPW01.WORLD
+                   WHERE SITE_TYPE = 'IC1')
+    ), tp_min_max AS ( -- Get start and end dates for each month
+        SELECT MONTH, MONTHLY_AVG
+          FROM tp_base
+         WHERE DATE_LOADED = MAX_DATE_LOADED
+    ), cal_base AS ( -- Generate a calendar from sysdate to sysdate + 6 years (72 months)
+        SELECT /*+ materialize */
+               ADD_MONTHS (SYSDATE, -12) + LEVEL - 1 AS CAL_DATE,
+               TO_CHAR (ADD_MONTHS (SYSDATE, -12) + LEVEL - 1, 'MON-YYYY') AS MONTH
+          FROM dual
+       CONNECT BY ADD_MONTHS (SYSDATE, -12) + LEVEL <= ADD_MONTHS (SYSDATE, 72)
+    ), cal_month AS ( -- Get start and end date for each month
+        SELECT DISTINCT MONTH,
+               MIN (TRUNC (CAL_DATE)) OVER (PARTITION BY MONTH) AS FROM_DATE,
+               MAX (TRUNC (CAL_DATE)) OVER (PARTITION BY MONTH) AS TO_DATE
+          FROM cal_base cb
+    ), cal AS ( -- Rank result (sequence)
+        SELECT MONTH, FROM_DATE, TO_DATE,
+               DENSE_RANK () OVER (ORDER BY FROM_DATE) AS RANK
+          FROM cal_month
+    ), merged AS ( -- Merge the calendar and existing transfer prices
+        SELECT NVL (tp.MONTH, c.MONTH) AS MONTH,
+               c.FROM_DATE AS FROM_DATE,
+               c.TO_DATE AS TO_DATE,
+               c.RANK AS C_RANK,
+               tp.MONTHLY_AVG
+          FROM tp_min_max tp
+         RIGHT OUTER JOIN cal c
+            ON c.MONTH = tp.MONTH
+    ), offsets AS( -- Find first month that has no data
+        SELECT MONTH, FROM_DATE, TO_DATE, C_RANK,
+               (SELECT MIN (C_RANK) FROM merged WHERE MONTHLY_AVG IS NULL) AS MIN_RANK,
+               MONTHLY_AVG
+          FROM merged
+    ), adjusted AS ( -- For extrapolated months, calculate distance from values to be copied
+        SELECT MONTH, FROM_DATE, TO_DATE,
+               CASE
+                 WHEN C_RANK < MIN_RANK THEN
+                      0
+                 ELSE
+                      TRUNC ((C_RANK + 12 - MIN_RANK) / 12)
+               END AS ADJ_YEAR,
+               MONTHLY_AVG,
+               C_RANK AS MONTH_NUM
+          FROM offsets
+    )   SELECT MONTH,
+               FROM_DATE,
+               TO_DATE,
+               ADJ_YEAR, -- Actual or if not present, extrapolated averages
+               CASE
+                 WHEN MONTHLY_AVG IS NOT NULL THEN
+                      MONTHLY_AVG
+                 ELSE
+                      LAG (MONTHLY_AVG, (ADJ_YEAR * 12)) OVER (ORDER BY FROM_DATE ASC)
+               END AS MONTHLY_AVG,
+               MONTH_NUM, 'G' AS FUEL_TYPE
+          FROM adjusted
+         ORDER BY FROM_DATE ;
+
+    PKG_PAL.SP_SET_PROCESSED_COUNT (SQL%ROWCOUNT) ;
+
+    COMMIT ;
+
+    -- *************************************************
+    -- ***************** Tariff volume *****************
+    -- *************************************************
+
+    PKG_PAL.SP_SET_CURRENT_ACTION ('Truncating renewal volumes work table.') ;
+    EXECUTE IMMEDIATE 'TRUNCATE TABLE CORP_CC2_WK_RENEWAL_VOLUMES' ;
+
+    -- Tariff Elec HH & NHH & Gas Contract volume - 'T_C_HH_NHH_G'
+    PKG_PAL.SP_SET_CURRENT_ACTION ('Inserting T_C_HH_NHH_G - Tariff contract HH, NHH and Gas volumes into work table.') ;
+
+    INSERT INTO CORP_CC2_WK_RENEWAL_VOLUMES
+           (ICE_CUSTOMER_ID,
+            QUOTE_ID,
+            FUEL_TYPE_ID,
+            CONTRACT_END,
+            CONTRACT_DURATION,
+            TOTAL_VOLUME,
+            TOTAL_CONTRACT_VALUE,
+            VOLUME_TYPE,
+            CREATED)
+    WITH vol1 AS (
+        SELECT qp.ICE_CUSTOMER_ID,
+               qp.QUOTE_ID,
+               CASE
+                 WHEN qp.KEY_TYPE IN (1, 15)
+                  AND qpr.PROFILE_CLASS = '00' THEN
+                      1
+                 WHEN qp.KEY_TYPE IN (1, 15)
+                  AND qpr.PROFILE_CLASS <> '00' THEN
+                      3
+                 WHEN qp.KEY_TYPE IN (2, 14) THEN
+                      2
+                 ELSE 5
+               END AS FUEL_TYPE_ID,
+               NVL(qp.DAYTIME_CONSUMPTION, 0) +
+               NVL(qp.NIGHTTIME_CONSUMPTION, 0) +
+               NVL(qp.EVENING_WEEKEND_CONSUMPTION, 0) AS D_CONSUMPTION, -- Detail consumptions
+               qp.CONSUMPTION, -- Sum of detail consumption (not always the case...)
+               qp.STANDING_CHARGE / 3 AS STANDING_CHARGE -- Not used in contract value but could be
+          FROM QUOTE_PRODUCT qp,
+               QUOTE_PRODUCT_REFERENCE qpr
+         WHERE qp.QUOTE_PRODUCT_ID = qpr.QUOTE_PRODUCT_ID
+    ), vol2 AS (
+        SELECT v1.ICE_CUSTOMER_ID,
+               v1.QUOTE_ID,
+               v1.FUEL_TYPE_ID,
+               SUM (CASE
+                      WHEN v1.D_CONSUMPTION = 0 THEN
+                           v1.CONSUMPTION
+                      ELSE
+                           v1.D_CONSUMPTION
+                    END) AS TOTAL_VOLUME
+          FROM vol1 v1
+         GROUP BY v1.ICE_CUSTOMER_ID,
+                  v1.QUOTE_ID,
+                  v1.FUEL_TYPE_ID
+    ), vol3 AS (
+        SELECT /*+ ORDERED */
+               v2.ICE_CUSTOMER_ID,
+               v2.QUOTE_ID,
+               v2.FUEL_TYPE_ID,
+               q.CONTRACT_END,
+               q.CONTRACT_DURATION,
+               ((v2.TOTAL_VOLUME / q.CONTRACT_DURATION) * 12) AS ANNUAL_VOLUME,
+               ((v2.TOTAL_VOLUME / q.CONTRACT_DURATION) * 12) *
+                  ((CASE
+                    WHEN v2.FUEL_TYPE_ID IN (1, 3) THEN
+                         fn_get_tp (q.CONTRACT_END + 1, q.CONTRACT_DURATION, 'E')
+                    ELSE fn_get_tp (q.CONTRACT_END + 1, q.CONTRACT_DURATION, 'G')
+                  END * l_shape_prem_mult) + (
+                       l_3rd_party_cost  +
+                       l_kva_cost))  AS ANNUAL_CONTRACT_VALUE,
+               q.QUOTE_TYPE
+          FROM CORP_CC2_WK_RENEWAL_CUST_QUOTE q,
+               vol2 v2
+         WHERE q.ICE_CUSTOMER_ID = v2.ICE_CUSTOMER_ID
+           AND q.QUOTE_ID        = v2.QUOTE_ID
+           AND q.FUEL_TYPE_ID    = v2.FUEL_TYPE_ID
+           AND q.QUOTE_TYPE      = 'T_C_HH_NHH_G'
+           AND TOTAL_VOLUME      IS NOT NULL AND TOTAL_VOLUME > 0 -- No use having zero or NULL volume
+    ) SELECT v3.ICE_CUSTOMER_ID,
+             v3.QUOTE_ID,
+             v3.FUEL_TYPE_ID,
+             v3.CONTRACT_END,
+             v3.CONTRACT_DURATION,
+             NVL((v3.ANNUAL_VOLUME / 12) * v3.CONTRACT_DURATION,-1) AS TOTAL_VOLUME,
+             NVL((v3.ANNUAL_CONTRACT_VALUE / 12) * v3.CONTRACT_DURATION, -1) AS TOTAL_CONTRACT_VALUE,
+             v3.QUOTE_TYPE,
+             l_run_date
+      FROM   vol3 v3 ;
+
+    PKG_PAL.SP_SET_PROCESSED_COUNT (SQL%ROWCOUNT) ;
+
+    COMMIT ;
+
+   -- Tariff Elec NHH & Gas actual volume 'T_A_NHH_G'
+   PKG_PAL.SP_SET_CURRENT_ACTION ('Inserting T_A_NHH_G - Tariff actual NHH and Gas volumes into work table.') ;
+
+   WITH q_p AS (
+        SELECT qp.ICE_CUSTOMER_ID,
+               qp.QUOTE_ID,
+               qp.ACCOUNT_REFERENCE,
+               CASE
+                 WHEN qp.KEY_TYPE IN (1, 15) THEN
+                      3
+                 WHEN qp.KEY_TYPE IN (2, 14) THEN
+                      2
+                 ELSE
+                      5
+               END AS FUEL_TYPE_ID
+        FROM   QUOTE_PRODUCT qp
+   ), vol1 AS (
+        SELECT /*+ ORDERED DRIVING_SITE (ch) USE_NL (ch cmr) */
+               qp.ICE_CUSTOMER_ID,
+               qp.QUOTE_ID,
+               qp.FUEL_TYPE_ID,
+               q.CONTRACT_START,
+               q.CONTRACT_END,
+               q.CONTRACT_DURATION,
+               cmr.FROM_READ_DATE,
+               cmr.TO_READ_DATE,
+               cmr.KWH_UNITS AS UNITS_CONSUMED,
+               q.QUOTE_TYPE
+          FROM CORP_CC2_WK_RENEWAL_CUST_QUOTE q,
+               q_p qp,
+               CHARGE@cgenpw01.world ch,
+               CHARGE_METER_READING@cgenpw01.world cmr
+         WHERE ch.CHARGE_ID         = cmr.CHARGE_ID
+           AND ch.PRODUCT_REFERENCE = qp.ACCOUNT_REFERENCE
+           AND ch.PRODUCT_REFERENCE = cmr.PRODUCT_REFERENCE
+           AND ch.CHARGE_TYPE       IN ('LI', 'PL', 'RC')
+           AND q.ICE_CUSTOMER_ID    = qp.ICE_CUSTOMER_ID
+           AND q.QUOTE_ID           = qp.QUOTE_ID
+           AND q.FUEL_TYPE_ID       = qp.FUEL_TYPE_ID
+           AND q.QUOTE_TYPE         = 'T_A_NHH_G'
+           AND q.CONTRACT_START     <= cmr.TO_READ_DATE
+           AND q.CONTRACT_END       >= cmr.FROM_READ_DATE
+    ), vol2 AS (
+        SELECT v1.ICE_CUSTOMER_ID,
+               v1.QUOTE_ID,
+               v1.FUEL_TYPE_ID,
+               v1.CONTRACT_END,
+               v1.CONTRACT_DURATION,
+               SUM (CASE
+                     WHEN v1.CONTRACT_START BETWEEN v1.FROM_READ_DATE AND v1.TO_READ_DATE THEN
+                          UNITS_CONSUMED * ((v1.TO_READ_DATE - v1.CONTRACT_START + 1) /
+                                            (v1.TO_READ_DATE - v1.FROM_READ_DATE + 1))
+                     WHEN v1.CONTRACT_END BETWEEN v1.FROM_READ_DATE AND v1.TO_READ_DATE THEN
+                          UNITS_CONSUMED * ((v1.CONTRACT_END - v1.FROM_READ_DATE + 1) /
+                                            (v1.TO_READ_DATE - v1.FROM_READ_DATE + 1))
+                     ELSE UNITS_CONSUMED
+                    END) AS TOTAL_VOLUME
+          FROM vol1 v1
+         GROUP BY v1.ICE_CUSTOMER_ID,
+                  v1.QUOTE_ID,
+                  v1.FUEL_TYPE_ID,
+                  v1.CONTRACT_END,
+                  v1.CONTRACT_DURATION
+    ), vol3 AS (
+        SELECT v2.ICE_CUSTOMER_ID,
+               v2.QUOTE_ID,
+               v2.FUEL_TYPE_ID,
+               v2.CONTRACT_END,
+               v2.CONTRACT_DURATION,
+               ((v2.TOTAL_VOLUME / v2.CONTRACT_DURATION) * 12) AS ANNUAL_VOLUME,
+               ((v2.TOTAL_VOLUME / v2.CONTRACT_DURATION) * 12) *
+               ((CASE
+                    WHEN v2.FUEL_TYPE_ID IN (1, 3) THEN
+                         fn_get_tp (v2.CONTRACT_END + 1, v2.CONTRACT_DURATION, 'E')
+                    ELSE fn_get_tp (v2.CONTRACT_END + 1, v2.CONTRACT_DURATION, 'G')
+                  END * l_shape_prem_mult) + (
+                       l_3rd_party_cost  +
+                       l_kva_cost)) AS ANNUAL_CONTRACT_VALUE
+          FROM vol2 v2
+         WHERE TOTAL_VOLUME IS NOT NULL
+           AND TOTAL_VOLUME > 0 -- No use having zero or NULL volume
+    ) SELECT v3.ICE_CUSTOMER_ID,
+             v3.QUOTE_ID,
+             v3.FUEL_TYPE_ID,
+             v3.CONTRACT_END,
+             v3.CONTRACT_DURATION,
+             NVL((ANNUAL_VOLUME / 12) * v3.CONTRACT_DURATION,-1) AS TOTAL_VOLUME,
+             NVL((ANNUAL_CONTRACT_VALUE / 12) * v3.CONTRACT_DURATION, -1) AS TOTAL_CONTRACT_VALUE
+        BULK COLLECT
+        INTO ice_customer_id_tbl,
+             quote_id_tbl,
+             fuel_type_id_tbl,
+             contract_end_tbl,
+             contract_duration_tbl,
+             total_volume_tbl,
+             total_contract_value_tbl
+        FROM vol3 v3 ;
+
+    IF ice_customer_id_tbl.COUNT > 0 THEN
+
+        FORALL i IN ice_customer_id_tbl.FIRST .. ice_customer_id_tbl.LAST
+           INSERT
+             INTO CORP_CC2_WK_RENEWAL_VOLUMES
+                  (ICE_CUSTOMER_ID, QUOTE_ID, FUEL_TYPE_ID, CONTRACT_END, CONTRACT_DURATION,
+                   TOTAL_VOLUME, TOTAL_CONTRACT_VALUE, VOLUME_TYPE, CREATED)
+           VALUES (ice_customer_id_tbl (i), quote_id_tbl (i), fuel_type_id_tbl (i),
+                   contract_end_tbl (i), contract_duration_tbl (i),
+                   total_volume_tbl (i), total_contract_value_tbl (i),
+                   'T_A_NHH_G', SYSDATE);
+
+    END IF ;
+    PKG_PAL.SP_SET_PROCESSED_COUNT (ice_customer_id_tbl.COUNT) ;
+
+    COMMIT ;
+    ice_customer_id_tbl.DELETE;
+    quote_id_tbl.DELETE;
+    fuel_type_id_tbl.DELETE;
+    contract_end_tbl.DELETE;
+    contract_duration_tbl.DELETE;
+    total_volume_tbl.DELETE;
+    total_contract_value_tbl.DELETE;
+
+    -- *************************************************
+    -- ***************** Bespoke volume ****************
+    -- *************************************************
+
+    -- Bespoke Elec HH, NHH and Gas Contract volume 'B_C_HH_NHH_G'
+    PKG_PAL.SP_SET_CURRENT_ACTION ('Inserting B_C_HH_NHH_G - Bespoke contract HH, NHH and Gas volumes into work table.') ;
+
+    WITH vol1 AS (
+        SELECT /*+ DRIVING_SITE (qgm) */
+               qgm.ICE_CUSTOMER_ID,
+               qgm.QUOTE_ID,
+               CASE
+                 WHEN PROFILE_CLASS = '00' THEN
+                      1
+                 ELSE
+                      3
+               END AS FUEL_TYPE_ID,
+               q.CONTRACT_END,
+               q.CONTRACT_DURATION,
+               pkg_gbp_utils.fn_get_contract_vol (qgm.QUOTE_ID, 'E') AS VOLUME,
+               pkg_gbp_utils.fn_get_contract_val (qgm.QUOTE_ID, 'E') AS CONTRACT_VALUE
+          FROM CORP_CC2_WK_RENEWAL_CUST_QUOTE q,
+               GBP.GBP_QUOTE_GROUP_MPAN@SPPRPW01_GBP.WORLD qgm
+         WHERE q.ICE_CUSTOMER_ID = qgm.ICE_CUSTOMER_ID
+           AND q.QUOTE_ID        = qgm.QUOTE_ID
+           AND q.FUEL_TYPE_ID    = CASE
+                                     WHEN qgm.PROFILE_CLASS = '00' THEN
+                                          1
+                                     ELSE
+                                          3
+                                   END
+           AND q.QUOTE_TYPE      = 'B_C_HH_NHH_G'
+        UNION ALL
+        SELECT /*+ DRIVING_SITE (qgs) */
+               qgs.ICE_CUSTOMER_ID,
+               qgs.QUOTE_ID,
+               2 AS FUEL_TYPE_ID, -- Gas
+               q.CONTRACT_END,
+               q.CONTRACT_DURATION,
+               pkg_gbp_utils.fn_get_contract_vol (qgs.QUOTE_ID, 'G') AS VOLUME,
+               pkg_gbp_utils.fn_get_contract_val (qgs.QUOTE_ID, 'G') AS CONTRACT_VALUE
+          FROM CORP_CC2_WK_RENEWAL_CUST_QUOTE q,
+               GBP.GBP_QUOTE_GROUP_SITE@SPPRPW01_GBP.WORLD qgs
+         WHERE q.ICE_CUSTOMER_ID = qgs.ICE_CUSTOMER_ID
+           AND q.QUOTE_ID        = qgs.QUOTE_ID
+           AND q.FUEL_TYPE_ID    = 2
+           AND q.QUOTE_TYPE      = 'B_C_HH_NHH_G'
+    ), vol2 AS (
+        SELECT /*+ ORDERED */
+               v1.ICE_CUSTOMER_ID,
+               v1.QUOTE_ID,
+               v1.FUEL_TYPE_ID,
+               v1.CONTRACT_END,
+               v1.CONTRACT_DURATION,
+               MAX (v1.VOLUME)         AS TOTAL_VOLUME,
+               MAX (v1.CONTRACT_VALUE) AS TOTAL_CONTRACT_VALUE
+        FROM   vol1 v1
+        GROUP BY v1.ICE_CUSTOMER_ID,
+                 v1.QUOTE_ID,
+                 v1.FUEL_TYPE_ID,
+                 v1.CONTRACT_END,
+                 v1.CONTRACT_DURATION
+    ), vol3 AS (
+        SELECT /*+ ORDERED */
+               v2.ICE_CUSTOMER_ID,
+               v2.QUOTE_ID,
+               v2.FUEL_TYPE_ID,
+               v2.CONTRACT_END,
+               v2.CONTRACT_DURATION,
+               ((v2.TOTAL_VOLUME / v2.CONTRACT_DURATION) * 12) AS ANNUAL_VOLUME,
+               ((v2.TOTAL_CONTRACT_VALUE / v2.CONTRACT_DURATION) * 12) AS ANNUAL_CONTRACT_VALUE
+          FROM vol2 v2
+         WHERE TOTAL_VOLUME IS NOT NULL
+           AND TOTAL_VOLUME > 0 -- No use having zero or NULL volume
+    ) SELECT v3.ICE_CUSTOMER_ID,
+             v3.QUOTE_ID,
+             v3.FUEL_TYPE_ID,
+             v3.CONTRACT_END,
+             v3.CONTRACT_DURATION,
+             NVL((v3.ANNUAL_VOLUME / 12) * v3.CONTRACT_DURATION, -1) AS TOTAL_VOLUME,
+             NVL((v3.ANNUAL_CONTRACT_VALUE / 12) * v3.CONTRACT_DURATION, -1) AS TOTAL_CONTRACT_VALUE
+        BULK COLLECT
+        INTO ice_customer_id_tbl,
+             quote_id_tbl,
+             fuel_type_id_tbl,
+             contract_end_tbl,
+             contract_duration_tbl,
+             total_volume_tbl,
+             total_contract_value_tbl
+        FROM vol3 v3
+       WHERE v3.ANNUAL_CONTRACT_VALUE IS NOT NULL ;
+
+    IF ice_customer_id_tbl.COUNT > 0 THEN
+
+        FORALL i IN ice_customer_id_tbl.FIRST .. ice_customer_id_tbl.LAST
+           INSERT
+             INTO CORP_CC2_WK_RENEWAL_VOLUMES
+                 (ICE_CUSTOMER_ID, QUOTE_ID, FUEL_TYPE_ID, CONTRACT_END, CONTRACT_DURATION,
+                  TOTAL_VOLUME, TOTAL_CONTRACT_VALUE, VOLUME_TYPE, CREATED)
+            VALUES
+                 (ice_customer_id_tbl (i), quote_id_tbl (i), fuel_type_id_tbl (i),
+                  contract_end_tbl (i), contract_duration_tbl (i),
+                  total_volume_tbl (i), total_contract_value_tbl (i),
+                  'B_C_HH_NHH_G', SYSDATE) ;
+
+    END IF ;
+
+    PKG_PAL.SP_SET_PROCESSED_COUNT (ice_customer_id_tbl.COUNT) ;
+
+    COMMIT ;
+
+    ice_customer_id_tbl.DELETE;
+    quote_id_tbl.DELETE;
+    fuel_type_id_tbl.DELETE;
+    contract_end_tbl.DELETE;
+    contract_duration_tbl.DELETE;
+    total_volume_tbl.DELETE;
+    total_contract_value_tbl.DELETE;
+
+    -- Bespoke Elec NHH, Gas actual volume 'B_A_NHH_G'
+    PKG_PAL.SP_SET_CURRENT_ACTION ('Truncating MPAN - MPR work table.') ;
+
+    EXECUTE IMMEDIATE 'TRUNCATE TABLE CORP_CC2_WK_RENEWAL_MPAN_MPR' ;
+
+    PKG_PAL.SP_SET_CURRENT_ACTION ('Inserting into MPAN - MPR work table for B_A_NHH_G - Bespoke actual NHH and Gas volumes.') ;
+
+    SELECT /*+ ORDERED DRIVING_SITE (mph) */
+           q.ICE_CUSTOMER_ID,
+           mph.QUOTE_ID,
+           CASE
+             WHEN mph.PRODUCT_CODE = 'E' THEN
+                  3 -- NHH
+             ELSE
+                  2
+           END AS FUEL_TYPE_ID, -- Gas
+           q.CONTRACT_START,
+           q.CONTRACT_END,
+           q.CONTRACT_DURATION,
+           mph.MPAN_MPR
+      BULK COLLECT
+      INTO ice_customer_id_tbl, quote_id_tbl, fuel_type_id_tbl,
+           contract_start_tbl, contract_end_tbl, contract_duration_tbl,
+           mpan_mpr_tbl
+      FROM CORP_CC2_WK_RENEWAL_CUST_QUOTE q,
+           GBP.GBP_METER_POINT_HIST@SPPRPW01_GBP.WORLD mph -- Couples MPAN-MPRs with Quote
+     WHERE q.QUOTE_ID = mph.QUOTE_ID
+       AND q.FUEL_TYPE_ID = CASE
+                              WHEN mph.PRODUCT_CODE = 'E' THEN
+                                   3
+                              WHEN mph.PRODUCT_CODE = 'G' THEN
+                                   2
+                              ELSE
+                                   NULL
+                            END
+       AND q.QUOTE_TYPE = 'B_A_NHH_G' ;
+
+    IF ice_customer_id_tbl.COUNT > 0 THEN
+
+        FORALL i IN ice_customer_id_tbl.FIRST .. ice_customer_id_tbl.LAST
+            INSERT
+              INTO CORP_CC2_WK_RENEWAL_MPAN_MPR
+                  (ICE_CUSTOMER_ID, QUOTE_ID, FUEL_TYPE_ID, CONTRACT_START, CONTRACT_END,
+                   CONTRACT_DURATION, MPAN_MPR, CREATED)
+            VALUES (ice_customer_id_tbl (i), quote_id_tbl (i), fuel_type_id_tbl (i),
+                    contract_start_tbl (i), contract_end_tbl (i), contract_duration_tbl (i),
+                    mpan_mpr_tbl (i), SYSDATE) ;
+
+    END IF ;
+
+    PKG_PAL.SP_SET_PROCESSED_COUNT (ice_customer_id_tbl.COUNT) ;
+
+    COMMIT ;
+
+    ice_customer_id_tbl.DELETE;
+    quote_id_tbl.DELETE;
+    fuel_type_id_tbl.DELETE;
+    contract_start_tbl.DELETE;
+    contract_end_tbl.DELETE;
+    contract_duration_tbl.DELETE;
+    mpan_mpr_tbl.DELETE;
+
+    PKG_PAL.SP_SET_CURRENT_ACTION ('Inserting B_A_NHH_G - Bespoke actual NHH and Gas volumes into work table.') ;
+    WITH vol1 AS (
+        SELECT /*+ ORDERED DRIVING_SITE (cmr) INDEX (ch CHARGE_PK) INDEX (cmr CHARGE_METER_READING_I1) */
+               q.ICE_CUSTOMER_ID,
+               q.QUOTE_ID,
+               q.FUEL_TYPE_ID,
+               q.CONTRACT_START,
+               q.CONTRACT_END,
+               q.CONTRACT_DURATION,
+               cmr.FROM_READ_DATE,
+               cmr.TO_READ_DATE,
+               cmr.KWH_UNITS AS UNITS_CONSUMED
+          FROM CORP_CC2_WK_RENEWAL_MPAN_MPR q,
+               CHARGE_METER_READING@cgenpw01.world cmr,
+               CHARGE@cgenpw01.world ch
+         WHERE cmr.MPAN_MPR         = q.MPAN_MPR
+           AND ch.charge_type       IN ('LI', 'PL', 'RC') -- Live
+           AND ch.CHARGE_ID         = cmr.CHARGE_ID
+           AND ch.PRODUCT_REFERENCE = cmr.PRODUCT_REFERENCE
+           AND q.CONTRACT_START     <= cmr.TO_READ_DATE
+           AND q.CONTRACT_END       >= cmr.FROM_READ_DATE -- Reading periods within contract
+    ), vol2 AS (
+        SELECT v1.ICE_CUSTOMER_ID,
+               v1.QUOTE_ID,
+               v1.FUEL_TYPE_ID,
+               v1.CONTRACT_END,
+               v1.CONTRACT_DURATION,
+               SUM (CASE
+                      WHEN v1.CONTRACT_START BETWEEN v1.FROM_READ_DATE
+                                                 AND v1.TO_READ_DATE THEN
+                           UNITS_CONSUMED *
+                             ((v1.TO_READ_DATE - v1.CONTRACT_START + 1) /
+                              (v1.TO_READ_DATE - v1.FROM_READ_DATE + 1))
+                      WHEN v1.CONTRACT_END BETWEEN v1.FROM_READ_DATE
+                                               AND v1.TO_READ_DATE THEN
+                           UNITS_CONSUMED *
+                             ((v1.CONTRACT_END - v1.FROM_READ_DATE + 1) /
+                              (v1.TO_READ_DATE - v1.FROM_READ_DATE + 1))
+                      ELSE
+                         UNITS_CONSUMED
+                    END) AS TOTAL_VOLUME
+          FROM vol1 v1
+         GROUP BY v1.ICE_CUSTOMER_ID,
+                  v1.QUOTE_ID,
+                  v1.FUEL_TYPE_ID,
+                  v1.CONTRACT_END,
+                  v1.CONTRACT_DURATION
+    ), vol3 AS (
+        SELECT v2.ICE_CUSTOMER_ID,
+               v2.QUOTE_ID,
+               v2.FUEL_TYPE_ID,
+               v2.CONTRACT_END,
+               v2.CONTRACT_DURATION,
+               ((v2.TOTAL_VOLUME / v2.CONTRACT_DURATION) * 12) AS ANNUAL_VOLUME,
+               ((v2.TOTAL_VOLUME / v2.CONTRACT_DURATION) * 12) *
+               ((CASE
+                    WHEN v2.FUEL_TYPE_ID IN (1, 3) THEN
+                         fn_get_tp (v2.CONTRACT_END + 1, v2.CONTRACT_DURATION, 'E')
+                    ELSE fn_get_tp (v2.CONTRACT_END + 1, v2.CONTRACT_DURATION, 'G')
+                  END * l_shape_prem_mult) + (
+                       l_3rd_party_cost  +
+                       l_kva_cost)) AS ANNUAL_CONTRACT_VALUE
+          FROM vol2 v2
+         WHERE TOTAL_VOLUME IS NOT NULL
+           AND TOTAL_VOLUME > 0 -- No use having zero or NULL volume
+    ) SELECT v3.ICE_CUSTOMER_ID,
+             v3.QUOTE_ID,
+             v3.FUEL_TYPE_ID,
+             v3.CONTRACT_END,
+             v3.CONTRACT_DURATION,
+             NVL((v3.ANNUAL_VOLUME / 12) * v3.CONTRACT_DURATION, -1) AS TOTAL_VOLUME,
+             (v3.ANNUAL_CONTRACT_VALUE / 12) * v3.CONTRACT_DURATION AS TOTAL_CONTRACT_VALUE
+        BULK COLLECT
+        INTO ice_customer_id_tbl,
+             quote_id_tbl,
+             fuel_type_id_tbl,
+             contract_end_tbl,
+             contract_duration_tbl,
+             total_volume_tbl,
+             total_contract_value_tbl
+        FROM vol3 v3
+       WHERE v3.ANNUAL_CONTRACT_VALUE IS NOT NULL ;
+
+    IF ice_customer_id_tbl.COUNT > 0 THEN
+
+        FORALL i IN ice_customer_id_tbl.FIRST .. ice_customer_id_tbl.LAST
+           INSERT
+             INTO CORP_CC2_WK_RENEWAL_VOLUMES
+                 (ICE_CUSTOMER_ID, QUOTE_ID, FUEL_TYPE_ID, CONTRACT_END, CONTRACT_DURATION,
+                  TOTAL_VOLUME, TOTAL_CONTRACT_VALUE, VOLUME_TYPE, CREATED)
+           VALUES (ice_customer_id_tbl (i), quote_id_tbl (i), fuel_type_id_tbl (i),
+                   contract_end_tbl (i), contract_duration_tbl (i),
+                   total_volume_tbl (i), total_contract_value_tbl (i),
+                   'B_A_NHH_G', SYSDATE) ;
+
+    END IF ;
+
+    PKG_PAL.SP_SET_PROCESSED_COUNT (ice_customer_id_tbl.COUNT) ;
+
+    COMMIT ;
+    ice_customer_id_tbl.DELETE;
+    quote_id_tbl.DELETE;
+    fuel_type_id_tbl.DELETE;
+    contract_end_tbl.DELETE;
+    contract_duration_tbl.DELETE;
+    total_volume_tbl.DELETE;
+    total_contract_value_tbl.DELETE;
+
+    -- Bespoke Elec HH actual 'B_A_HH'
+    PKG_PAL.SP_SET_CURRENT_ACTION ('Inserting B_A_HH - Bespoke actual HH volumes into work table.') ;
+
+    WITH vol11 AS (
+        SELECT /*+ DRIVING_SITE (acp) PARALLEL(tx,4) PARALLEL(txl,4) PARALLEL(bp,4) PARALLEL(cg,4) */
+               acp.QUOTE_ID,
+               q.ICE_CUSTOMER_ID,
+               1 AS FUEL_TYPE_ID,
+               q.CONTRACT_START,
+               q.CONTRACT_END,
+               q.CONTRACT_DURATION,
+               bp.PERIOD_START_DATE AS BP_PERIOD_START_DATE,
+               bp.PERIOD_END_DATE AS BP_PERIOD_END_DATE,
+               NVL (cg.EFFECTIVE_PERIOD_START_DATE,
+                    TO_DATE ('01/01/1900','DD/MM/YYYY')) AS CG_PERIOD_START_DATE,
+               NVL (cg.EFFECTIVE_PERIOD_END_DATE,
+                    TO_DATE ('31/12/9999','DD/MM/YYYY')) AS CG_PERIOD_END_DATE,
+               CASE
+                 WHEN NVL (p.PRODUCT_TYPE, 99) IN (1, 15) THEN
+                      NVL (txl.QUANTITY, 0)
+                 ELSE
+                      0
+               END AS QUANTITY
+         FROM CORP_CC2_WK_RENEWAL_CUST_QUOTE q,
+              sam.ALL_CNTRCT_PROPOSAL@EL98PW01.WORLD acp, -- 690k
+              sam.DESPATCH@EL98PW01.WORLD tx,  -- 3.5m
+              sam.BILL_PRD@EL98PW01.WORLD bp,  -- 6.5m
+              sam.DESPATCH_LINE@EL98PW01.WORLD txl, -- 12.2m
+              sam.CHARGE_GROUPING@EL98PW01.WORLD cg,  -- 3m
+              sam.PRODUCT@EL98PW01.WORLD p   -- 500
+        WHERE q.QUOTE_ID                                = acp.QUOTE_ID
+          AND q.QUOTE_TYPE                              = 'B_A_HH'
+          AND acp.PRICE_STATUS                          IN ('WON','RETAINED','AUDIT')
+          AND acp.PRODUCT_ACCOUNT                       IS NOT NULL
+          AND acp.SITE_CONTRACT_ID                      = tx.SITE_CONTRACT_ID
+          -- Limit despatch_status_type to 7 - Posted to SL, 11 - Awaiting Backing
+          -- Sheets, 12 - Sent to ICE, 13 - Invoiced by ICE, 14 - Ready for ICE.
+          AND tx.DESPATCH_STATUS_TYPE                   IN (7, 11, 12, 13 , 14)
+          AND tx.CALENDAR_ID                            = bp.CALENDAR_ID
+          AND tx.BILLING_PERIOD_ID                      = bp.BILLING_PERIOD_ID
+          AND NVL(tx.CURRENT_CHARGE_GROUPING_ID, -9999) = cg.CHARGE_GROUPING_ID (+)
+          AND tx.DESPATCH_ID                            = txl.DESPATCH_ID
+          AND txl.PRODUCT_ID                            = p.PRODUCT_ID
+          AND acp.QUOTE_ID                              IS NOT NULL
+    ), vol1 AS (
+        SELECT ICE_CUSTOMER_ID,
+               QUOTE_ID,
+               FUEL_TYPE_ID,
+               CONTRACT_START,
+               CONTRACT_END,
+               CONTRACT_DURATION,
+               GREATEST(BP_PERIOD_START_DATE,
+                        CG_PERIOD_START_DATE) AS PERIOD_START_DATE,
+               LEAST(BP_PERIOD_END_DATE,
+                     CG_PERIOD_END_DATE)      AS PERIOD_END_DATE,
+               QUANTITY                       AS VOLUME
+        FROM   vol11
+        WHERE  LEAST (BP_PERIOD_END_DATE,
+                      CG_PERIOD_END_DATE) >=
+               GREATEST (BP_PERIOD_START_DATE,
+                         CG_PERIOD_START_DATE) -- Exclude cases where end_date < start_date.
+    ), vol2 AS (
+        SELECT /*+ ORDERED */
+               v1.ICE_CUSTOMER_ID,
+               v1.QUOTE_ID,
+               v1.FUEL_TYPE_ID,
+               v1.CONTRACT_START,
+               v1.CONTRACT_END,
+               v1.CONTRACT_DURATION,
+               SUM (v1.VOLUME) AS TOTAL_VOLUME
+          FROM vol1 v1
+         WHERE v1.PERIOD_START_DATE BETWEEN v1.CONTRACT_START
+                                        AND v1.CONTRACT_END
+           AND v1.PERIOD_END_DATE BETWEEN v1.CONTRACT_START AND v1.CONTRACT_END
+         GROUP BY v1.ICE_CUSTOMER_ID,
+                  v1.QUOTE_ID,
+                  v1.FUEL_TYPE_ID,
+                  v1.CONTRACT_START,
+                  v1.CONTRACT_END,
+                  v1.CONTRACT_DURATION
+    ), vol3 AS (
+        SELECT /*+ ORDERED */
+               v2.ICE_CUSTOMER_ID,
+               v2.QUOTE_ID,
+               v2.FUEL_TYPE_ID,
+               v2.CONTRACT_END,
+               v2.CONTRACT_DURATION,
+               ((v2.TOTAL_VOLUME / v2.CONTRACT_DURATION) * 12) AS ANNUAL_VOLUME,
+               ((v2.TOTAL_VOLUME / v2.CONTRACT_DURATION) * 12)/* * l_tp_multiplier */ AS ANNUAL_CONTRACT_VALUE
+          FROM vol2 v2
+         WHERE TOTAL_VOLUME IS NOT NULL
+           AND TOTAL_VOLUME > 0 -- No use having zero or NULL volume
+    ) SELECT v3.ICE_CUSTOMER_ID,
+             v3.QUOTE_ID,
+             v3.FUEL_TYPE_ID,
+             v3.CONTRACT_END,
+             v3.CONTRACT_DURATION,
+             NVL((v3.ANNUAL_VOLUME / 12) * v3.CONTRACT_DURATION, -1) AS TOTAL_VOLUME,
+             ANNUAL_CONTRACT_VALUE AS TOTAL_CONTRACT_VALUE
+        BULK COLLECT
+        INTO ice_customer_id_tbl,
+             quote_id_tbl,
+             fuel_type_id_tbl,
+             contract_end_tbl,
+             contract_duration_tbl,
+             total_volume_tbl,
+             total_contract_value_tbl
+        FROM vol3 v3;
+
+    IF ice_customer_id_tbl.COUNT > 0 THEN
+
+        FORALL i IN ice_customer_id_tbl.FIRST .. ice_customer_id_tbl.LAST
+           INSERT
+             INTO CORP_CC2_WK_RENEWAL_VOLUMES
+                 (ICE_CUSTOMER_ID, QUOTE_ID, FUEL_TYPE_ID, CONTRACT_END, CONTRACT_DURATION,
+                  TOTAL_VOLUME, TOTAL_CONTRACT_VALUE, VOLUME_TYPE, CREATED)
+           VALUES (ice_customer_id_tbl (i), quote_id_tbl (i), fuel_type_id_tbl (i),
+                   contract_end_tbl (i), contract_duration_tbl (i),
+                   total_volume_tbl (i), total_contract_value_tbl (i),
+                   'B_A_HH', SYSDATE) ;
+
+    END IF ;
+
+    PKG_PAL.SP_SET_PROCESSED_COUNT (ice_customer_id_tbl.COUNT) ;
+    COMMIT ;
+
+    ice_customer_id_tbl.DELETE ; quote_id_tbl.DELETE ; fuel_type_id_tbl.DELETE ;
+    contract_end_tbl.DELETE ; contract_duration_tbl.DELETE ; total_volume_tbl.DELETE ;
+    total_contract_value_tbl.DELETE ;
+
+    PKG_PAL.SP_SET_CURRENT_ACTION ('Calculating Total Contract value using transfer prices...') ;
+
+    -- Had to be a separate step as previous query could not have run on REMOTE site because of function call in SQL
+    UPDATE CORP_CC2_WK_RENEWAL_VOLUMES a
+       SET a.TOTAL_CONTRACT_VALUE = (CASE WHEN a.fuel_type_id = 1 THEN
+                                              a.total_volume * l_fuel_1_unit
+                                         WHEN a.fuel_type_id = 2 THEN
+                                              a.total_volume * l_fuel_2_unit
+                                         WHEN a.fuel_type_id = 3 THEN
+                                              a.total_volume * l_fuel_3_unit
+                                         WHEN a.fuel_type_id = 4 THEN
+                                              a.total_volume * l_fuel_4_unit
+                                         WHEN a.fuel_type_id = 5 THEN
+                                              a.total_volume * l_fuel_5_unit
+                                         ELSE -1
+                                    END)
+    WHERE VOLUME_TYPE LIKE 'B_A_%';
+
+    COMMIT ;
+
+    PKG_PAL.SP_SET_CURRENT_ACTION ('Running stored procedure sp_renewals...') ;
+
+    sp_renewals ;
+
+    PKG_PAL.SP_SET_SPU_EXIT (l_spu_name) ;
+
+    EXCEPTION
+        WHEN OTHERS THEN
+            PKG_PAL.SP_LOG_EVENT ;
+            PKG_PAL.SP_SET_SPU_EXIT (l_spu_name) ;
+            ROLLBACK ;
+            RAISE ;
+
+END sp_prepare_renewals ;

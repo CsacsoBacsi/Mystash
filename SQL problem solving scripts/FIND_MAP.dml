@@ -1,0 +1,46 @@
+"-------------------------------------------------------------------------------------------------------------
+" Purpose:      To find out to which AW object a given relational object (usually View) is mapped to
+" Argument:     RelationalObject (text)
+" Call syntax:  FIND_MAP 'VW_TIME_DIM'
+" Returns:      List of dims (if any) or list of cubes (if any) that are mapped to the argument.
+"               The list is echoed to the standard output in text format.
+" Prerequisite: An AW with metada objects present must be attached
+" Created by:   C10879
+" Date created: 05/11/2008
+"-------------------------------------------------------------------------------------------------------------
+arg rel_obj text
+
+trap on error noprint
+
+lmt mapgroup_dim to all
+sort mapgroup_dim a mapgroup_dim
+
+lmt all_hierarchies to all
+sort all_hierarchies a all_hierarchies
+
+lmt all_levels to all
+sort all_levels a all_levels
+
+lmt all_measures to all
+sort all_measures a all_measures
+
+for HIERLVL_MAP_COMPOSITE
+do
+    if findchars (dim_key_map, rel_obj) gt 0 
+    then do
+        shw joinchars ('Dimension: ' extchars (mapgroup_dim, 1, findchars (mapgroup_dim '.') - 1) ' - ' dim_key_map)
+    doend 
+doend
+
+for MEAS_MAP_COMPOSITE
+do
+    if findchars (meas_data_map, rel_obj) gt 0
+    then do
+        shw joinchars ('Cube: ' extchars (mapgroup_dim, 1, findchars (mapgroup_dim '.') - 1) ' - ' meas_data_map)     
+    doend
+doend
+
+return
+
+error:
+shw joinchars ('ERROR: ' errorname ': ' errortext)

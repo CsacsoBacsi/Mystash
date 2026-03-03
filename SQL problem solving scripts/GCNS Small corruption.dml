@@ -1,0 +1,35 @@
+vrb i decimal
+vrb j decimal
+vrb k decimal
+
+lmt gcns_small_ver to '10153'
+lmt gas_site_type to  gas_site_type_levelrel eq 'BASE'
+lmt gas_licence to gas_licence_levelrel    eq 'BASE'
+lmt business_structure to business_structure_levelrel       eq 'SECTOR'
+lmt ldz to  ldz_levelrel      eq 'LDZ'
+lmt euc to euc_levelrel    eq 'EUC'
+lmt gas_product to gas_product_levelrel     eq 'PRODUCT_TYPE'
+lmt GCNS_SMALL_PRT_MEASDIM to 'MPR_COUNT'
+
+"status gcns_small_prt_topvar
+
+"return
+lmt time to '08/01/2009' to '12/31/2013'
+i = 0
+j = 0
+k = 0
+for time
+do
+
+   for gdf_small_non_agg_composite
+   do
+          
+      i = i + gcns_small_prt_topvar   
+      j = j + gdf_small_non_agg_seasonal_normal_est_demand
+      k = k + gdf_small_non_agg_weather_adjusted_demand
+   doend
+doend
+
+shw i
+shw j
+shw k

@@ -1,0 +1,73 @@
+{
+  "Version": 1,
+  "WorkspaceRootPath": "G:\\Visual Studio\\VS2019Projects\\Tutorial\\ASM\\Practice\\",
+  "Documents": [
+    {
+      "AbsoluteMoniker": "D:0:0:{BB52D015-391F-442C-8FBB-CCC99D9D2306}|Practice\\Practice.vcxproj|G:\\Visual Studio\\VS2019Projects\\Tutorial\\ASM\\Practice\\Practice\\OpCodes.asm||{8B382828-6202-11D1-8870-0000F87579D2}",
+      "RelativeMoniker": "D:0:0:{BB52D015-391F-442C-8FBB-CCC99D9D2306}|Practice\\Practice.vcxproj|solutionrelative:Practice\\OpCodes.asm||{8B382828-6202-11D1-8870-0000F87579D2}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{BB52D015-391F-442C-8FBB-CCC99D9D2306}|Practice\\Practice.vcxproj|G:\\Visual Studio\\VS2019Projects\\Tutorial\\ASM\\Practice\\Practice\\MyProc.asm||{8B382828-6202-11D1-8870-0000F87579D2}",
+      "RelativeMoniker": "D:0:0:{BB52D015-391F-442C-8FBB-CCC99D9D2306}|Practice\\Practice.vcxproj|solutionrelative:Practice\\MyProc.asm||{8B382828-6202-11D1-8870-0000F87579D2}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{BB52D015-391F-442C-8FBB-CCC99D9D2306}|Practice\\Practice.vcxproj|G:\\Visual Studio\\VS2019Projects\\Tutorial\\ASM\\Practice\\Practice\\OpCodes2.asm||{8B382828-6202-11D1-8870-0000F87579D2}",
+      "RelativeMoniker": "D:0:0:{BB52D015-391F-442C-8FBB-CCC99D9D2306}|Practice\\Practice.vcxproj|solutionrelative:Practice\\OpCodes2.asm||{8B382828-6202-11D1-8870-0000F87579D2}"
+    }
+  ],
+  "DocumentGroupContainers": [
+    {
+      "Orientation": 0,
+      "VerticalTabListWidth": 256,
+      "DocumentGroups": [
+        {
+          "DockedWidth": 200,
+          "SelectedChildIndex": 3,
+          "Children": [
+            {
+              "$type": "Bookmark",
+              "Name": "ST:0:0:{d78612c7-9962-4b83-95d9-268046dad23a}"
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 1,
+              "Title": "MyProc.asm",
+              "DocumentMoniker": "G:\\Visual Studio\\VS2019Projects\\Tutorial\\ASM\\Practice\\Practice\\MyProc.asm",
+              "RelativeDocumentMoniker": "Practice\\MyProc.asm",
+              "ToolTip": "G:\\Visual Studio\\VS2019Projects\\Tutorial\\ASM\\Practice\\Practice\\MyProc.asm",
+              "RelativeToolTip": "Practice\\MyProc.asm",
+              "ViewState": "AgIAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.001001|",
+              "WhenOpened": "2025-12-30T06:11:44.517Z"
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 2,
+              "Title": "OpCodes2.asm",
+              "DocumentMoniker": "G:\\Visual Studio\\VS2019Projects\\Tutorial\\ASM\\Practice\\Practice\\OpCodes2.asm",
+              "RelativeDocumentMoniker": "Practice\\OpCodes2.asm",
+              "ToolTip": "G:\\Visual Studio\\VS2019Projects\\Tutorial\\ASM\\Practice\\Practice\\OpCodes2.asm",
+              "RelativeToolTip": "Practice\\OpCodes2.asm",
+              "ViewState": "AgIAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.001001|",
+              "WhenOpened": "2025-12-30T06:11:25.97Z"
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 0,
+              "Title": "OpCodes.asm",
+              "DocumentMoniker": "G:\\Visual Studio\\VS2019Projects\\Tutorial\\ASM\\Practice\\Practice\\OpCodes.asm",
+              "RelativeDocumentMoniker": "Practice\\OpCodes.asm",
+              "ToolTip": "G:\\Visual Studio\\VS2019Projects\\Tutorial\\ASM\\Practice\\Practice\\OpCodes.asm",
+              "RelativeToolTip": "Practice\\OpCodes.asm",
+              "ViewState": "AgIAAAAAAAAAAAAAAAAAACYAAAAAAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.001001|",
+              "WhenOpened": "2025-12-30T06:11:13.19Z",
+              "EditorCaption": ""
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

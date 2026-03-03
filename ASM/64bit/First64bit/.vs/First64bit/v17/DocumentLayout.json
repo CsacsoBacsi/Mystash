@@ -1,0 +1,40 @@
+{
+  "Version": 1,
+  "WorkspaceRootPath": "\\\\CSACSISTORE\\Csacso\\Visual Studio\\VS2019Projects\\Tutorial\\ASM\\64bit\\First64bit\\",
+  "Documents": [
+    {
+      "AbsoluteMoniker": "D:0:0:{CF57682A-AB2D-46A3-95FA-AE55C32D32F8}|First64bitProj\\First64bitProj.vcxproj|\\\\CSACSISTORE\\Csacso\\Visual Studio\\VS2019Projects\\Tutorial\\ASM\\64bit\\First64bit\\First64bitProj\\FirstTest64.asm||{8B382828-6202-11D1-8870-0000F87579D2}"
+    }
+  ],
+  "DocumentGroupContainers": [
+    {
+      "Orientation": 0,
+      "VerticalTabListWidth": 256,
+      "DocumentGroups": [
+        {
+          "DockedWidth": 200,
+          "SelectedChildIndex": 1,
+          "Children": [
+            {
+              "$type": "Bookmark",
+              "Name": "ST:0:0:{d78612c7-9962-4b83-95d9-268046dad23a}"
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 0,
+              "Title": "FirstTest64.asm",
+              "DocumentMoniker": "\\\\CSACSISTORE\\Csacso\\Visual Studio\\VS2019Projects\\Tutorial\\ASM\\64bit\\First64bit\\First64bitProj\\FirstTest64.asm",
+              "RelativeDocumentMoniker": "First64bitProj\\FirstTest64.asm",
+              "ToolTip": "\\\\CSACSISTORE\\Csacso\\Visual Studio\\VS2019Projects\\Tutorial\\ASM\\64bit\\First64bit\\First64bitProj\\FirstTest64.asm",
+              "RelativeToolTip": "First64bitProj\\FirstTest64.asm",
+              "ViewState": "AgIAAAAAAAAAAAAAAAAAAAwAAAAlAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.001001|",
+              "WhenOpened": "2025-10-01T21:46:25.352Z",
+              "EditorCaption": ""
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

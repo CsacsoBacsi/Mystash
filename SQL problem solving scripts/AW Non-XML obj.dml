@@ -1,0 +1,51 @@
+"-------------------------------------------------------------------------------------------------------------
+" Purpose:      Discover all non-standard (non XML created) object in an AW
+" Argument:     ReportType (integer), 1: Screen - text format, 2: Screen - CSV format
+" Call syntax:  GET_NON_XML_OBJ 2
+" Returns:      List of non-standard objects and their type, definition and size
+"               The list is echoed to the standard output (screen) either in text format or
+"               as a comma separated list of columns
+" Prerequisite: An AW with metada objects present must be attached
+" Created by:   C10879
+" Date created: 25/09/2009
+"-------------------------------------------------------------------------------------------------------------
+
+arg _rep_type integer " Report type
+
+trap on error noprint
+
+" Non-standard objects do not have this property
+lmt name to obj (property 'AW$CREATEDBY') ne 'AW$XML'
+sort name a obj (type name) a name
+
+" Create header row 
+if _rep_type eq 2
+then do
+    shw joinchars ('OLAP_OBJ,', 'OBJ_TYPE,', 'SIZE_MB,', 'SIZE_MB_DISK,', 'DEFINITION')
+doend
+
+" Loop over all non-standard objects
+for name
+do
+    if _rep_type eq 1
+    then do
+
+        shw joinchars ('OLAP object:    ' name)
+        shw joinchars ('Type:           ' obj (type name))
+        shw joinchars ('Size (MB):      ' (obj (valsize name) * 8192) / (1024 * 1024))
+        shw joinchars ('Size disk (MB): ' (obj (disksize name) * 8192) / (1024 * 1024))
+        if obj (type name) ne 'PARTITION TEMPLATE' " Definition for part templates is too long...
+        then shw joinchars ('Definition:     ' obj (define name)) 
+        else shw joinchars ('Definition:     ' 'PARTITION TEMPLATE') 
+        
+    doend
+    else do " CSV
+        shw joinchars (name, ',' obj (type name), ',' (obj (valsize name) * 8192) / (1024 * 1024), ',' (obj (disksize name) * 8192) / (1024 * 1024), ',' if obj (type name) ne 'PARTITION TEMPLATE' then obj (define name) else 'PARTITION TEMPLATE')   
+    doend
+doend
+
+return 0
+
+" Error handling
+error:
+return -1

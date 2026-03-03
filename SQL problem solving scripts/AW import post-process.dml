@@ -1,0 +1,29 @@
+DEFINE POSTPROCESS PROGRAM INTEGER
+PROGRAM
+
+vrb _roots text
+
+trap on error noprint
+
+blank
+
+lmt name to obj (type) eq 'DIMENSION'
+lmt name keep extchars (joinchars ('1234567' name), numchars (joinchars ('1234567' name)) - 6, 7) eq 'PRT_DIM' " Padding of name is needed because there can be short named dims there!
+
+for name
+do
+    _roots = joinchars (extchars (name 1 numchars (name) - 3) 'ROOTS')
+    shw joinchars ('mnt ' name ' delete ' _roots ' eq na and ' name ' ne \'P0\'')
+    &joinchars ('mnt ' name ' delete ' _roots ' eq na and ' name ' ne \'P0\'')
+doend
+
+upd
+cmm
+
+return 0
+
+error:
+shw joinchars ('ERROR: ' errortext)
+return -1
+
+END

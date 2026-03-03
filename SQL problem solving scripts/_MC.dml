@@ -1,0 +1,206 @@
+DEFINE _MC PROGRAM INTEGER
+PROGRAM
+" ------------------------------------------------------------------------------
+" Program: _MC
+" Params: Cube, measure, composite, MergeOVCompositeOnly
+" Example: shw _mc ('GDF_SMALL', 'SEASONAL_NORMAL_EST_DEMAND', na, true)
+" Created by: Csaba Riedlinger
+" Date: 7th of May, 2007
+" Purpose: To merge the base cube's custom composite with the total override cube's composite
+"          Composite name = BaseCube + CUST_OV_MERGE_COMP + CurrentScenario
+"
+" Modified by/on: Pally Gharmount -9th October 2007 - Migration from T22 to LIVE
+"
+" Modified by/on:
+"
+" ------------------------------------------------------------------------------
+
+arg _basecube text      " Cube name
+arg _meas text          " Measure name
+arg _composite text     " Composite (that overrides the custom composite)
+arg _ovonly boolean     " Should only the override composite be merged into the ov custom scenario composite?
+
+vrb _dims text          " Holds the dimensions of the custom composite
+vrb _dims2 text         " Holds the dimensions of a composite
+vrb _thisdim text       " Holds the current dimension as we loop over each dim of the composite
+vrb i integer           " Loop variable
+vrb _cmpdef text        " New (merged) composite's definition
+vrb _scdim text         " Scenario dimension
+vrb _custcomp text      " Custom composite
+vrb _ovcomp text        " Total override cube's composite
+vrb _sccomp text        " New (merged) composite's name
+vrb _dimlist text       " List of dimension across which the merging occurs
+vrb _merge text         " Dynamic program code to do the actual merging
+
+trap on error noprint
+
+_scdim = joinchars (_basecube '_SC')
+_ovcomp = joinchars (_basecube '_SC_N_' &_scdim '_PRTCOMP')
+if &_scdim eq '**NEW**'
+then do
+    _ovcomp = joinchars (_basecube '_SC_N_COMP_NEW')
+doend
+
+if is.compressed (_basecube)
+then do
+    _custcomp = joinchars (_basecube '_CUSTOM_COMPOSITE')
+doend
+else do
+    _custcomp = joinchars (_basecube '_COMPOSITE')
+doend
+if _composite ne na
+then _custcomp = _composite
+
+" If a dummy composite is specified, then the merging still needs to be carried out but only using the override composite!
+if _composite eq 'DUMMY_COMPOSITE'
+then do
+   _custcomp = _ovcomp
+   _ovonly = True
+doend
+
+_dims = obj (dims _custcomp)
+_cmpdef = joinchars ('define ' _basecube '_CUST_OV_MERGE_COMP_' &_scdim ' composite ')
+_sccomp = joinchars (_basecube '_CUST_OV_MERGE_COMP_' &_scdim)
+_cmpdef = changechars (_cmpdef '*' '_')
+_sccomp = changechars (_sccomp '*' '_')
+
+i = 1
+_dimlist = '<'
+while i le numlines (_dims)
+do
+   if findchars (extlines (_dims i 1) '_VER') gt 0
+   then do
+       i = i + 1
+       continue
+   doend
+   _dimlist = joinchars (_dimlist joinchars (extlines (_dims i 1) ', '))
+   i = i + 1
+doend
+
+_dimlist = joinchars (extchars (_dimlist 1 numchars (_dimlist) - 2) '>')
+_cmpdef = joinchars (_cmpdef _dimlist)
+
+if not exists (_sccomp)
+then &_cmpdef
+
+if not exists ('_DO_MC')
+then do
+   dfn _do_mc prg integer
+doend
+
+if _ovonly
+then goto ovonly
+
+" Set the custom composite's dimensions' status to all before merging. Otherwise the current status would be used which
+" would cause problems later
+if findlines (context, '_MC') eq 1
+then do
+    context '_MC' discard
+doend
+context '_MC' create
+_dims2 = obj (dims _custcomp)
+i = 1
+while i le numlines (_dims2)
+do
+   _thisdim = extlines (_dims2 i 1)
+   context '_MC' save &_thisdim
+   lmt &_thisdim to all
+   i = i + 1
+doend
+
+" Populate the _do_mc program and execute it
+cns _do_mc
+_merge = joinlines ('vrb _cnt integer' -
+'vrb _secs decimal' -
+'' -
+'trap on error noprint' -
+'' -
+'_cnt = 0' -
+'_secs = dseconds' -
+joinchars ('for ' _custcomp) -
+'do' -
+joinchars ('   mnt ' _sccomp ' merge ' _dimlist) -
+'   _cnt = _cnt + 1' -
+'doend' -
+joinchars ('shw joinchars (_cnt \' custom composite touples visited in \' dseconds - _secs \' seconds.\')') -
+'' -
+'return 0' -
+'' -
+'error:' -
+'return -1')
+
+program _merge
+cmp _do_mc
+if _do_mc ne 0
+then do
+    goto error
+doend
+
+" Restore dimension statuses
+context '_MC' apply
+context '_MC' discard
+
+ovonly:
+
+" Set the override cube's composite's dimensions' status to all before merging. Otherwise the current status would be used which
+" would cause problems later
+if findlines (context, '_MC') eq 1
+then do
+    context '_MC' discard
+doend
+context '_MC' create
+_dims2 = obj (dims _ovcomp)
+i = 1
+while i le numlines (_dims2)
+do
+   _thisdim = extlines (_dims2 i 1)
+   context '_MC' save &_thisdim
+   lmt &_thisdim to all
+   i = i + 1
+doend
+
+" Populate the _do_mc program and execute it
+cns _do_mc
+_merge = joinlines ('vrb _cnt integer' -
+'vrb _secs decimal' -
+'' -
+'trap on error noprint' -
+'' -
+'_cnt = 0' -
+'_secs = dseconds' -
+joinchars ('for ' _ovcomp) -
+'do' -
+joinchars ('   mnt ' _sccomp ' merge ' _dimlist) -
+'   _cnt = _cnt + 1' -
+'doend' -
+joinchars ('shw joinchars (_cnt \' override composite touples visited in \' dseconds - _secs \' seconds.\')') -
+'' -
+'return 0' -
+'' -
+'error:' -
+'return -1')
+
+program _merge
+cmp _do_mc
+if _do_mc ne 0
+then do
+    goto error
+doend
+
+" Restore dimension statuses
+context '_MC' apply
+context '_MC' discard
+
+return 0
+
+error:
+shw errortext
+if findlines (context, '_MC') eq 1
+then do
+    context '_MC' apply
+    context '_MC' discard
+doend
+
+return -1
+
+END
