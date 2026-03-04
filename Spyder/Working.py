@@ -10,7 +10,7 @@ builder = SparkSession.builder.appName("MyApp") \
 spark = configure_spark_with_delta_pip(builder).getOrCreate()
 spark.sparkContext.setLogLevel("OFF")
 
-# Define target schema (has start and end date)
+# Define target schema (has start date and end date)
 schema = StructType([
  StructField("col1", StringType(), True), 
  StructField("col2", StringType(), True),
@@ -20,7 +20,7 @@ schema = StructType([
  StructField("end_date", DateType(), True)
 ])
 # Define target data
-df_data =[('1','1','1',1,date.fromisoformat('2019-01-01'),date.fromisoformat('2025-03-31')),
+df_data =[('1','1','1',1,date.fromisoformat('2019-01-01'),date.fromisoformat('2025-03-31')), 
           ('1','1','1',2,date.fromisoformat('2025-04-01'),None), # 1 has some history
           ('2','1','1',1,date.fromisoformat('2019-01-01'),None),
           ('3','1','1',1,date.fromisoformat('2019-01-01'),None),
