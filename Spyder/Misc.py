@@ -4,7 +4,8 @@ all_columns = ["key1", "key2", "key3", "val1"]
 select_cols = ", ".join ([f"{k}" for k in all_columns]) + ","
 ua_select_cols = ", ".join ([f"ua.{k}" for k in all_columns]) + ","
 merge_on_left = " ".join([f"trg.{k} || \'||\' ||" for k in all_columns])
-merge_on_right = " ".join([f"src.{k} || \'||\' ||" for k in all_columns]) 
+merge_on_right = " ".join([f"src.{k} || \'||\' ||" for k in all_columns])
+insert_cols = ", ".join ([f"src.{k}" for k in all_columns])
 
 sql = f"""
 MERGE INTO {target_table} AS t USING
@@ -32,14 +33,15 @@ MERGE INTO {target_table} AS t USING
             current_date -1 as end_date 
     FROM  ua 
     GROUP BY {ua_select_cols} -- Check all columns if they are different. Basically distinct list
-    HAVING COUNT (ua.ind1) != COUNT (ua.ind2)) AS src -- Only when there is a difference. Otherwise no change, so ignore
+    HAVING COUNT (ua.ind1) != COUNT (ua.ind2)
+    ) AS src -- Only when there is a difference. Otherwise no change, so ignore
 ON ({merge_on_left} 'U' = 
     {merge_on_right} src.transaction_type) -- Merge key: primary key columns
 WHEN MATCHED AND t.end_date IS NULL THEN -- There can be a multi-row history for a key, so leave those rows and operate on current/live row only
     UPDATE SET end_date = src.end_date -- Update only the end date (close row off). New data will be inserted.
 WHEN NOT MATCHED AND transaction_type = 'I' THEN -- Row of type 'I' is only present in target, so insert
-    INSERT (col1, col2, col3, val, start_date, end_date) 
-    VALUES (src.col1, src.col2, src.col3, src.val, src.start_date, NULL) 
+    INSERT ({select_cols[:-1]}, start_date, end_date) 
+    VALUES ({insert_cols}, src.start_date, NULL) 
 """
 
 r = 5
