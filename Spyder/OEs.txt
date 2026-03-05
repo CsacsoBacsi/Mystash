@@ -1,0 +1,37 @@
+OE
+cim_oe_id
+cim_src_sys_id
+Allianz France 1
+Allianz Germany P&C 2
+Allianz Austria (Elementar) 4
+Allianz Spain (Seguros) 5
+Allianz Italy 6
+Allianz Partners 7
+AGCS 8
+Allianz Benelux - Netherlands 9
+Allianz UK (Commercial Lines) 10
+Allianz Benelux - Belgium 11
+Allianz Benelux - Luxenbourg 12
+Allianz Switzerland 13
+Allianz Australia - P&C 14
+Allianz Ireland 15
+Allianz Malaysia 16
+Allianz Turkey 17
+Allianz Brazil 18
+Allianz Indonesia 19
+Allianz Singapore 20
+Allianz Sri Lanka 21
+Allianz Thailand 22
+Allianz Hong Kong 23
+Allianz Bulgaria 24
+Allianz Croatia 25
+Allianz Czechia 26
+Allianz Hungary 27
+Allianz Poland 28
+Allianz Romania (Tiriac) 29
+Allianz Ukraine 30
+Allianz Slovakia 31
+Allianz Argentina 32
+Allianz Colombia 33
+Allianz Mexico 34
+Allianz Portugal 35
