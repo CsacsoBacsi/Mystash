@@ -127,8 +127,7 @@ df.write.option("compression", "none").json("/path/to/output_json")
 # Partitioned output
 df.write.partitionBy("column_name").json("/path/to/output_json")
 
-*** Parquet Files ***
-
+-- Parquet Files
 # Basic Parquet write
 df.write.parquet("/path/to/output_parquet")
 
@@ -143,7 +142,8 @@ df.write.partitionBy("column_name").parquet("/path/to/output_parquet")
 
 # Compression options (default is snappy)
 df.write.option("compression", "gzip").parquet("/path/to/output_parquet")
-ORC Files
+
+-- ORC Files
 # Basic ORC write
 df.write.orc("/path/to/output_orc")
 
@@ -162,8 +162,7 @@ Delta Tables/Files (Requires Delta Lake)
 # Basic Delta write
 df.write.format("delta").save("/path/to/output_delta")
 
-*** Basic Delta Table ***
-
+-- Basic Delta Table
 df.write.format("delta").saveAsTable("table_name")
 
 # Overwrite mode
@@ -253,6 +252,12 @@ df = df.withColumns({
     "bonus": col("salary") * 0.1,
     "net_salary": col("salary") - (col("salary") * 0.2)
 })
+
+# Make a new Struct column (similar to Python's `dict()`) – F.struct(*cols)
+df = df.withColumn('my_struct', F.struct(F.col('col_a'), F.col('col_b')))
+
+# Get item from struct by key – col.getField(str)
+df = df.withColumn('col_a', F.col('my_struct').getField('col_a'))
 
 -- Dropping Columns
 # Drop a column
@@ -1193,3 +1198,27 @@ spark.sql("select first_name from {customers_df}",customers_df = df).show()
 df2 = spark.read.format('csv').option('header', 'true').load('/samples/orders.csv')
 # Use Spark SQL with a variable and pass the dataframe
 spark.sql("select order_id from {orders_df}",orders_df = df2).show()
+
+*** User defined function ***
+
+from pyspark.sql.functions import udf
+from pyspark.sql.types import IntegerType
+
+# Define a UDF
+def multiply_by_two(x):
+    return x * 2
+
+multiply_udf = udf(multiply_by_two, IntegerType())
+
+# Apply UDF
+df.withColumn("new_column", multiply_udf(df["column"])).show()
+
+# Multiply each row's age column by two
+times_two_udf = F.udf(lambda x: x * 2)
+df = df.withColumn('age', times_two_udf(df.age))
+
+# Randomly choose a value to use as a row's name
+import random
+
+random_name_udf = F.udf(lambda: random.choice(['Bob', 'Tom', 'Amy', 'Jenna']))
+df = df.withColumn('name', random_name_udf())
