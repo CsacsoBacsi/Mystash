@@ -72,9 +72,6 @@ df.show(10)
 #Show DataFrame without truncating any columns:
 df.show(truncate=False)
 
-
-
-
 Follow me on LinkedIn – Shivakiran kotur
 Master PySpark: From Zero to Big Data Hero!!
 Loading Data from CSV File into a DataFrame
@@ -116,8 +113,6 @@ types to columns.
 df = spark.read.csv("your_file.csv", schema=custom_schema,
 header=True)
 
-
-
 Follow me on LinkedIn – Shivakiran kotur
 4. Load Multiple CSV Files
 
@@ -129,8 +124,6 @@ file_paths = ["file1.csv", "file2.csv", "file3.csv"]
 # Read multiple CSV files into a single DataFrame
 df = spark.read.csv(file_paths, header=True, inferSchema=True)
 
-
-
 5. Load a CSV from FileStore
 
 Here is an example of loading a CSV file from Databricks FileStore:
@@ -138,12 +131,9 @@ Here is an example of loading a CSV file from Databricks FileStore:
 df = spark.read.csv("/FileStore/tables/Order.csv", header=True,
 inferSchema=True, sep=',')
 
-
-
 6. Display the DataFrame
 
 Use the following commands to check the schema and display the DataFrame:
-
 # Print the schema of the DataFrame
 df.printSchema()
 
@@ -153,10 +143,6 @@ df.show() # Displays only the first 20 rows
 # Display the DataFrame in a tabular format
 display(df) # For Databricks notebooks
 
-
-
-
-Follow me on LinkedIn – Shivakiran kotur
 Interview Question: How Does inferSchema Work?
 
    •   Behind the Scenes: When you use inferSchema, Spark runs a job that scans the CSV
@@ -186,16 +172,12 @@ This document provides a comprehensive overview of how to load CSV data into
 DataFrames in PySpark, along with considerations for using schema inference. Let me know
 if you need any more details or adjustments!
 
-
-
-
 Follow me on LinkedIn – Shivakiran kotur
 Master PySpark: From Zero to Big Data Hero!!
 PySpark DataFrame Schema Definition
 1. Defining Schema Programmatically with StructType
 
 from pyspark.sql.types import *
-
 
 # Define the schema using StructType
 employeeSchema = StructType([
@@ -254,9 +236,6 @@ df.printSchema()
 # Optionally display the DataFrame
 # display(df)
 
-
-
-Follow me on LinkedIn – Shivakiran kotur
 Explanation
    •   Schema Definition: Both methods define a schema for the DataFrame,
        accommodating the dataset's requirements, including handling null values where
@@ -267,8 +246,6 @@ Follow me on LinkedIn – Shivakiran kotur
        a DataFrame using the specified schema.
    •   Printing the Schema: The df.printSchema() function allows you to verify that the
        DataFrame is structured as intended.
-
-
 
 
 Follow me on LinkedIn – Shivakiran kotur
@@ -288,7 +265,6 @@ df.select(column("Age")).show()
 
 #Directly using string name
 df.select("Salary").show()
-
 
 
 2. Selecting Multiple Columns Together
