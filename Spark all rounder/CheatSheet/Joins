@@ -1,0 +1,32 @@
+-- Join Types
+Join Type	Syntax	Description
+inner	how="inner"	Returns matching rows from both DataFrames based on the join condition.
+outer (full)	how="outer	Returns all rows, with NULL where no match is found in either DataFrame.
+left (left_outer)	how="left"	Returns all rows from the left DataFrame, with NULL for unmatched rows in the right.
+right (right_outer)	how="right"	Returns all rows from the right DataFrame, with NULL for unmatched rows in the left.
+left_semi	how="left_semi"	This is just an inner join of the two DataFrames, but only returns columns of left DataFrame.
+left_anti	how="left_anti"	Returns rows from the left DataFrame that do not have a match in the right.
+cross	df1.crossJoin(df2)	Returns the Cartesian product of rows from both DataFrames (no join condition).
+
+-- Basic Syntax
+# Basic Join
+df1.join(df2, on="id", how="inner")
+
+# Join on Multiple Columns
+df1.join(df2, on=["col1", "col2"], how="left")
+
+# Conditional Join
+df1.join(df2, (df1.id == df2.id) & (df2.city == "New York"), how="inner")
+# Multiple join conditions require parentheses around each condition
+joined_df = sales_df.join(
+    customers_df,
+    (sales_df["customer_id"] == customers_df["customer_id"]) & (sales_df["region"] == customers_df["region"]),
+    "inner"
+)
+
+# Select ALL columns from df1, and SOME columns from df2 (useful for left joins)
+result = df1.join(df2, on="id", how="left").select(df1["*"], df2["state"] , df2["town"])
+
+# Broadcast Join for Small DataFrames
+from pyspark.sql.functions import broadcast
+df1.join(broadcast(df2), on="id", how="inner")

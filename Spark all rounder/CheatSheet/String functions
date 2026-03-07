@@ -1,0 +1,131 @@
+-- Basic String Functions
+# 1. Concatenate two strings
+# Input: "hello world" + " !!!"
+# Output: "hello world !!!"
+df = df.withColumn("concatenated_2_cols", concat(col("col1"), col("col2")))
+df = df.withColumn("concatenated_col_with_lit", concat(col("text"), lit(" !!!")))
+
+# 2. Concatenate columns with a separator (Space)
+# Input: ("John", "Doe", "30")
+# Output: "John Doe 30"
+df = df.withColumn("full_name", concat_ws(" ", col("first_name"), col("last_name"), col("age")))
+
+# 3. Concatenate columns with a separator (Comma)
+# Input: ("John", "Doe", "30")
+# Output: "John, Doe, 30"
+df = df.withColumn("full_name_comma", concat_ws(", ", col("first_name"), col("last_name"), col("age")))
+
+# 4. Concatenate with a custom string
+# Input: ("John", "Doe")
+# Output: "Name: John Doe"
+df = df.withColumn("name", concat_ws("", lit("Name: "), col("first_name"), lit(" "), col("last_name")))
+
+# 5. Check if string contains a substring
+# Input: "hello world" -> "world"
+# Output: True
+df = df.withColumn("contains_world", col("text").contains("world"))
+df = df.withColumn("contains_world2", contains(col("text"), lit("world")))
+
+# 6. Check if string starts with a specific substring
+# Input: "hello world" -> "hello"
+# Output: True
+df = df.withColumn("starts_with_hello", col("text").startswith("hello"))
+df = df.withColumn("starts_with_hello2", startswith(col("text"), lit("hello")))
+
+# 7. Check if string ends with a specific substring
+# Input: "hello world" -> "world"
+# Output: True
+df = df.withColumn("ends_with_world", col("text").endswith("world"))
+df = df.withColumn("ends_with_world2", endswith(col("text"), lit("world")))
+
+# 8. Capitalize the first letter of each word
+# Input: "hello world"
+# Output: "Hello World"
+df = df.withColumn("initcap_text", initcap(col("text")))
+
+# 9. Convert string to uppercase
+# Input: "hello world"
+# Output: "HELLO WORLD"
+df = df.withColumn("upper_text", upper(col("text")))
+
+# 10. Convert string to lowercase
+# Input: "HELLO WORLD"
+# Output: "hello world"
+df = df.withColumn("lower_text", lower(col("text")))
+
+# 11. Get the length of the string
+# Input: "hello world"
+# Output: 11
+df = df.withColumn("length_of_text", length(col("text")))
+
+-- Trim and Pad Functions
+# 1. Trim: Remove both leading and trailing spaces from first_name
+# Input: "   John   "
+# Output: "John"
+df = df.withColumn("trimmed_first_name", trim(col("first_name")))
+
+# 2. Ltrim: Remove leading spaces from first_name
+# Input: "   John"
+# Output: "John"
+df = df.withColumn("ltrim_first_name", ltrim(col("first_name")))
+
+# 3. Rtrim: Remove trailing spaces from last_name
+# Input: "Doe   "
+# Output: "Doe"
+df = df.withColumn("rtrim_last_name", rtrim(col("last_name")))
+
+# 4. Lpad: Pad first_name with spaces on the left to make the length 10
+# Input: "John"
+# Output: "      John"
+df = df.withColumn("lpad_first_name", lpad(col("first_name"), 10, " "))
+
+# 5. Rpad: Pad last_name with spaces on the right to make the length 10
+# Input: "Doe"
+# Output: "Doe       "
+df = df.withColumn("rpad_last_name", rpad(col("last_name"), 10, " "))
+
+# 6. Lpad with a custom padding character: Pad first_name with "0" on the left to make the length 10
+# Input: "John"
+# Output: "00000John"
+df = df.withColumn("lpad_first_name_zeros", lpad(col("first_name"), 10, "0"))
+
+# 7. Rpad with a custom padding character: Pad last_name with "0" on the right to make the length 10
+# Input: "Doe"
+# Output: "Doe0000000"
+df = df.withColumn("rpad_last_name_zeros", rpad(col("last_name"), 10, "0"))
+
+-- Advanced String Functions
+# 1. Substring: Extract substring from the full_name starting from position 1 (inclusive) with length 4
+# Input: "John_Doe_30"
+# Output: "John"
+df = df.withColumn("substring_example", substring(col("full_name"), 1, 4))
+
+# 2. Substring: Extract substring from the full_name starting from position 6 (inclusive) with length 3
+# Input: "John_Doe_30"
+# Output: "Doe"
+df = df.withColumn("substring_name", substring(col("full_name"), 6, 3))
+
+# 3. Substring: Extract last 2 characters of the full_name
+# Input: "John_Doe_30"
+# Output: "30"
+df = df.withColumn("substring_age", substring(col("full_name"), -2, 2))
+
+# 4. Split: Split the full_name into first and last names based on the "_" separator
+# Input: "John_Doe_30"
+# Output: ["John", "Doe", "30"]
+df = df.withColumn("split_name", split(col("full_name"), "_"))
+
+# 5. Split: Split the full_name into first and last names based on the "_" separator and get the first part (first name)
+# Input: "John_Doe_30"
+# Output: "John"
+df = df.withColumn("first_name", split(col("full_name"), "_")[0])
+
+# 6. Split: Split the full_name into first and last names and get the second part (last name)
+# Input: "John_Doe_30"
+# Output: "Doe"
+df = df.withColumn("last_name", split(col("full_name"), "_")[1])
+
+# 7. Split: Split the full_name and get the third part (age)
+# Input: "John_Doe_30"
+# Output: "30"
+df = df.withColumn("age", split(col("full_name"), "_")[2])

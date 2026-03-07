@@ -1,0 +1,43 @@
+# Filter on >, <, >=, <=, == condition
+df_filtered = df.filter(df.age > 30)
+df_filtered = df.filter(df['age'] > 30)
+
+# Using col() function
+from pyspark.sql.functions import col
+df_filtered = df.filter(col("age") > 30)
+Filter with Multiple Conditions
+# Multiple conditions require parentheses around each condition
+
+# AND condition ( & )
+df_filtered = df.filter((df.age > 25) & (df.department == "Engineering"))
+# OR condition ( | )
+df_filtered = df.filter((df.age < 30) | (df.department == "Finance"))
+String Filters
+# Filter rows where department equals 'Marketing'
+df_filtered = df.filter(df.department == "Marketing")
+
+# Case-insensitive filter
+df_filtered = df.filter(col("department").like("MARKETING"))
+
+# Contains a substring
+df_filtered = df.filter(col("department").contains("Engineer"))
+
+# Filter rows where the name starts with 'A'
+df.filter(col("name").startswith("A")).show()
+
+# Filter rows where the name ends with 'e'
+df.filter(col("name").endswith("e")).show()
+
+# Filter rows where the name matches a regex
+df.filter(col("name").rlike("^A.*")).show()
+Null Filters
+# Filter rows where a column is null
+df_filtered = df.filter(df.department.isNull())
+# Filter rows where a column is not null
+df_filtered = df.filter(df.department.isNotNull())
+Filter from a List
+# Filter rows where department is in a list
+departments = ["Engineering", "Finance"]
+df_filtered = df.filter(col("department").isin(departments))
+# Negate the filter (not in list)
+df_filtered = df.filter(~col("department").isin(departments))

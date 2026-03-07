@@ -1,0 +1,226 @@
+*** Date and Time Functions ***
+
+-- String to Date Format
+from pyspark.sql.functions import to_date
+
+# 1. Convert string date to date type (using "yyyy-MM-dd")
+# Input: "2025-01-25"
+# Output: 2025-01-25 (as a Date type)
+df = df.withColumn("date_parsed1", to_date("date_str", "yyyy-MM-dd"))
+
+# 2. Convert string date to date type (using "dd-MMM-yyyy")
+# Input: "25-Jan-2025"
+# Output: 2025-01-25 (as a Date type)
+df = df.withColumn("date_parsed2", to_date("date_str", "dd-MMM-yyyy"))
+
+# 3. Convert string date to date type (using "MM/dd/yyyy")
+# Input: "01/25/2025"
+# Output: 2025-01-25 (as a Date type)
+df = df.withColumn("date_parsed3", to_date("date_str", "MM/dd/yyyy"))
+
+# 4. Convert string date to date type (using "yyyy.MM.dd")
+# Input: "2025.01.25"
+# Output: 2025-01-25 (as a Date type)
+df = df.withColumn("date_parsed4", to_date("date_str", "yyyy.MM.dd")
+
+-- String to Timestamp Format
+from pyspark.sql.functions import to_timestamp
+
+# 1. Convert string timestamp to timestamp type (using "yyyy-MM-dd HH:mm:ss")
+# Input: "2025-01-25 10:15:00"
+# Output: 2025-01-25 10:15:00 (as a Timestamp type)
+df = df.withColumn("timestamp_parsed1", to_timestamp("timestamp_str", "yyyy-MM-dd HH:mm:ss"))
+
+# 2. Convert string timestamp to timestamp type (using "dd-MMM-yyyy HH:mm:ss")
+# Input: "25-Jan-2025 10:15:00"
+# Output: 2025-01-25 10:15:00 (as a Timestamp type)
+df = df.withColumn("timestamp_parsed2", to_timestamp("timestamp_str", "dd-MMM-yyyy HH:mm:ss"))
+
+# 3. Convert string timestamp to timestamp type (using "MM/dd/yyyy HH:mm:ss")
+# Input: "01/25/2025 10:15:00"
+# Output: 2025-01-25 10:15:00 (as a Timestamp type)
+df = df.withColumn("timestamp_parsed3", to_timestamp("timestamp_str", "MM/dd/yyyy HH:mm:ss"))
+
+# 4. Convert string timestamp to timestamp type (using "yyyy.MM.dd HH:mm:ss")
+# Input: "2025.01.25 10:15:00"
+# Output: 2025-01-25 10:15:00 (as a Timestamp type)
+df = df.withColumn("timestamp_parsed4", to_timestamp("timestamp_str", "yyyy.MM.dd HH:mm:ss"))
+
+-- Date to String Format
+from pyspark.sql.functions import date_format
+# 1. Format date as "yyyy-MM-dd"
+# Input: 2025-01-25 (Date Type)
+# Output: "2025-01-25" (String Type)
+df = df.withColumn("formatted_date1", date_format("date_parsed", "yyyy-MM-dd"))
+
+# 2. Format date as "dd-MMM-yyyy"
+# Input: 2025-01-25 (Date Type)
+# Output: "25-Jan-2025" (String Type)
+df = df.withColumn("formatted_date2", date_format("date_parsed", "dd-MMM-yyyy"))
+
+# 3. Format date as "MM/dd/yyyy"
+# Input: 2025-01-25 (Date Type)
+# Output: "01/25/2025" (String Type)
+df = df.withColumn("formatted_date3", date_format("date_parsed", "MM/dd/yyyy"))
+
+# 4. Format date as "dd/MM/yyyy"
+# Input: 2025-01-25 (Date Type)
+# Output: "25/01/2025" (String Type)
+df = df.withColumn("formatted_date4", date_format("date_parsed", "dd/MM/yyyy"))
+
+# 5. Format date as "MMMM dd, yyyy"
+# Input: 2025-01-25 (Date Type)
+# Output: "January 25, 2025" (String Type)
+df = df.withColumn("formatted_date5", date_format("date_parsed", "MMMM dd, yyyy"))
+
+# 6. Format date as "EEE, dd MMM yyyy"
+# Input: 2025-01-25 (Date Type)
+# Output: "Sun, 25 Jan 2025" (String Type)
+df = df.withColumn("formatted_date6", date_format("date_parsed", "EEE, dd MMM yyyy"))
+
+# 7. Format date as "yyyy/MM/dd"
+# Input: 2025-01-25 (Date Type)
+# Output: "2025/01/25" (String Type)
+df = df.withColumn("formatted_date7", date_format("date_parsed", "yyyy/MM/dd"))
+
+# 8. Format date as "yyyy.MM.dd"
+# Input: 2025-01-25 (Date Type)
+# Output: "2025.01.25" (String Type)
+df = df.withColumn("formatted_date8", date_format("date_parsed", "yyyy.MM.dd"))
+
+-- Timestamp to String Format
+from pyspark.sql.functions import date_format
+
+# 1. Format timestamp as "yyyy-MM-dd HH:mm:ss"
+# Input: "2025-01-25 10:15:00" (Timestamp Type)
+# Output: "2025-01-25 10:15:00" (String Type)
+df = df.withColumn("formatted_timestamp1", date_format("timestamp", "yyyy-MM-dd HH:mm:ss"))
+
+# 2. Format timestamp as "dd-MMM-yyyy HH:mm:ss"
+# Input: "2025-01-25 10:15:00" (Timestamp Type)
+# Output: "25-Jan-2025 10:15:00" (String Type)
+df = df.withColumn("formatted_timestamp2", date_format("timestamp", "dd-MMM-yyyy HH:mm:ss"))
+
+# 3. Format timestamp as "MM/dd/yyyy HH:mm:ss"
+# Input: "2025-01-25 10:15:00" (Timestamp Type)
+# Output: "01/25/2025 10:15:00" (String Type)
+df = df.withColumn("formatted_timestamp3", date_format("timestamp", "MM/dd/yyyy HH:mm:ss"))
+
+# 4. Format timestamp as "dd/MM/yyyy HH:mm:ss"
+# Input: "2025-01-25 10:15:00" (Timestamp Type)
+# Output: "25/01/2025 10:15:00" (String Type)
+df = df.withColumn("formatted_timestamp4", date_format("timestamp", "dd/MM/yyyy HH:mm:ss"))
+
+# 5. Format timestamp as "MMMM dd, yyyy HH:mm:ss"
+# Input: "2025-01-25 10:15:00" (Timestamp Type)
+# Output: "January 25, 2025 10:15:00" (String Type)
+df = df.withColumn("formatted_timestamp5", date_format("timestamp", "MMMM dd, yyyy HH:mm:ss"))
+
+# 6. Format timestamp as "EEE, dd MMM yyyy HH:mm:ss"
+# Input: "2025-01-25 10:15:00" (Timestamp Type)
+# Output: "Sun, 25 Jan 2025 10:15:00" (String Type)
+df = df.withColumn("formatted_timestamp6", date_format("timestamp", "EEE, dd MMM yyyy HH:mm:ss"))
+
+# 7. Format timestamp as "yyyy/MM/dd HH:mm:ss"
+# Input: "2025-01-25 10:15:00" (Timestamp Type)
+# Output: "2025/01/25 10:15:00" (String Type)
+df = df.withColumn("formatted_timestamp7", date_format("timestamp", "yyyy/MM/dd HH:mm:ss"))
+
+# 8. Format timestamp as "yyyy.MM.dd HH:mm:ss"
+# Input: "2025-01-25 10:15:00" (Timestamp Type)
+# Output: "2025.01.25 10:15:00" (String Type)
+df = df.withColumn("formatted_timestamp8", date_format("timestamp", "yyyy.MM.dd HH:mm:ss"))
+
+# Show the resulting DataFrame
+df.show(truncate=False)
+
+-- Date Functions
+from pyspark.sql import SparkSession
+from pyspark.sql.functions import (
+    current_date, date_add, date_sub, datediff, add_months,
+    trunc, date_format, year, month, dayofmonth, next_day, last_day
+)
+
+# 1. Current date
+# "2025-01-25" -> Current system date (e.g., "2025-01-25")
+df = df.withColumn("current_date", current_date())
+
+# 2. Add 10 days to the date
+# "2025-01-25" -> "2025-02-04"
+df = df.withColumn("date_plus_10", date_add("date", 10))
+
+# 3. Subtract 5 days from the date
+# "2025-01-25" -> "2025-01-20"
+df = df.withColumn("date_minus_5", date_sub("date", 5))
+
+# 4. Difference in days from current date
+# "2025-01-25" -> Number of days difference from today (e.g., "-5")
+df = df.withColumn("days_diff", datediff(current_date(), "date"))
+
+# 5. Add 2 months to the date
+# "2025-01-25" -> "2025-03-25"
+df = df.withColumn("add_months", add_months("date", 2))
+
+# 6. Extract year
+# "2025-01-25" -> "2025"
+df = df.withColumn("year", year("date"))
+
+# 7. Extract month
+# "2025-01-25" -> "1"
+df = df.withColumn("month", month("date"))
+
+# 8. Extract day of the month
+# "2025-01-25" -> "25"
+df = df.withColumn("day", dayofmonth("date"))
+
+# 9. Extract day of the week (1 = Sunday, 7 = Saturday)
+# Input: "2025-01-25"
+# Output: 7 (Saturday)
+df = df.withColumn("day_of_week", dayofweek("date"))
+
+# 10. Extract week of the year
+# Input: "2025-01-25"
+# Output: 4 (Week 4 of the year)
+df = df.withColumn("week_of_year", weekofyear("date"))
+
+# 11. Truncate to the first day of the month
+# "2025-01-25" -> "2025-01-01"
+df = df.withColumn("trunc_month", trunc("date", "MM"))
+
+# 12. Next specified day of the week
+# "2025-01-25" -> Next Monday (e.g., "2025-01-27")
+df = df.withColumn("next_monday", next_day("date", "Monday"))
+
+# 13. Last day of the month
+# "2025-01-25" -> "2025-01-31"
+df = df.withColumn("last_day_month", last_day("date"))
+
+-- Time Functions
+from pyspark.sql import SparkSession
+from pyspark.sql.functions import (
+    current_timestamp, hour, minute, second, unix_timestamp, from_unixtime
+)
+
+# 1. Current timestamp
+# "2025-01-25 10:15:00" -> Current system timestamp (e.g., "2025-01-25 10:15:00")
+df = df.withColumn("current_timestamp", current_timestamp())
+
+# 2. Extract hour
+# "2025-01-25 10:15:00" -> "10"
+df = df.withColumn("hour", hour("timestamp"))
+
+# 3. Extract minute
+# "2025-01-25 10:15:00" -> "15"
+df = df.withColumn("minute", minute("timestamp"))
+
+# 4. Extract second
+# "2025-01-25 10:15:00" -> "00"
+df = df.withColumn("second", second("timestamp"))
+
+# 5. Convert date to Unix timestamp
+# "2025-01-25 10:15:00" -> "1737763200"
+df = df.withColumn("unix_timestamp", unix_timestamp("timestamp"))
+
+# 6. Convert Unix timestamp to readable date
+# "1737763200" -> "2025-01-25 10:15:00"
+df = df.withColumn("from_unix", from_unixtime(unix_timestamp("timestamp")))

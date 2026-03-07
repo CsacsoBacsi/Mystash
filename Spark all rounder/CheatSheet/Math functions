@@ -1,0 +1,75 @@
+-- Simple Arithmetic
+# 1. Add two columns
+# Input: col1 = 10, col2 = 5
+# Output: 15 (col1 + col2)
+df = df.withColumn("sum", col("col1") + col("col2"))
+
+# 2. Subtract two columns
+# Input: col1 = 10, col2 = 5
+# Output: 5 (col1 - col2)
+df = df.withColumn("difference", col("col1") - col("col2"))
+
+# 3. Multiply two columns
+# Input: col1 = 10, col2 = 5
+# Output: 50 (col1 * col2)
+df = df.withColumn("product", col("col1") * col("col2"))
+
+# 4. Divide two columns
+# Input: col1 = 10, col2 = 5
+# Output: 2.0 (col1 / col2)
+df = df.withColumn("quotient", col("col1") / col("col2"))
+
+# 5. Add a constant to a column
+# Input: col1 = 10
+# Output: 15 (col1 + 5)
+df = df.withColumn("sum_with_constant", col("col1") + 5)
+
+# 6. Subtract a constant from a column
+# Input: col1 = 10
+# Output: 5 (col1 - 5)
+df = df.withColumn("difference_with_constant", col("col1") - 5)
+
+-- Complex Arithmetic
+from pyspark.sql.functions import (
+    abs, round, floor, ceil, exp, log, sqrt, pow
+)
+
+# 1. Absolute value
+# Input: -2.71
+# Output: 2.71
+df = df.withColumn("abs_value", abs("value"))
+
+# 2. Round the number to 2 decimal places
+# Input: 3.14159
+# Output: 3.14
+df = df.withColumn("rounded_value", round("value", 2))
+
+# 3. Floor (round down to the nearest integer)
+# Input: 3.14
+# Output: 3
+df = df.withColumn("floor_value", floor("value"))
+
+# 4. Ceil (round up to the nearest integer)
+# Input: 3.14
+# Output: 4
+df = df.withColumn("ceil_value", ceil("value"))
+
+# 5. Exponent (e raised to the power of the value)
+# Input: 2.0
+# Output: 7.389056
+df = df.withColumn("exp_value", exp("value"))
+
+# 6. Logarithm (log base e of the value)
+# Input: 2.718
+# Output: 0.999896
+df = df.withColumn("log_value", log("value"))
+
+# 7. Square root
+# Input: 16
+# Output: 4
+df = df.withColumn("sqrt_value", sqrt("value"))
+
+# 8. Power (raise the value to the power of 2)
+# Input: 3
+# Output: 9
+df = df.withColumn("pow_value", pow("value", 2))

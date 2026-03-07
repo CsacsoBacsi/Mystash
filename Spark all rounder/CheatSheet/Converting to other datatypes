@@ -1,0 +1,35 @@
+-- Converting to Other Data Types
+# 1. Convert string to integer
+# Input: "12345"
+# Output: 12345 (as an Integer type)
+df = df.withColumn("int_parsed", col("int_str").cast("int"))
+
+# 2. Convert string to float
+# Input: "123.45"
+# Output: 123.45 (as a Float type)
+df = df.withColumn("float_parsed", col("int_str").cast("float"))
+
+# 3. Convert string to double
+# Input: "123.4567"
+# Output: 123.4567 (as a Double type)
+df = df.withColumn("double_parsed", col("int_str").cast("double"))
+
+# 4. Convert string to long
+# Input: "123456789012"
+# Output: 123456789012 (as a Long type)
+df = df.withColumn("long_parsed", col("int_str").cast("long"))
+
+# 5. Convert integer to string
+# Input: 12345
+# Output: "12345" (as a String type)
+df = df.withColumn("int_to_str", col("int_parsed").cast("string"))
+
+# 6. Convert date to string
+# Input: 2025-01-25 (Date type)
+# Output: "2025-01-25" (String type)
+df = df.withColumn("date_to_str", col("date_parsed").cast("string"))
+
+# 7. Convert timestamp to string
+# Input: 2025-01-25 10:15:00 (Timestamp type)
+# Output: "2025-01-25 10:15:00" (String type)
+df = df.withColumn("timestamp_to_str", col("timestamp_parsed").cast("string"))

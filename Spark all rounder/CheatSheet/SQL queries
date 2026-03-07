@@ -1,0 +1,42 @@
+-- With Temp View
+# Create a temporary SQL table from a DataFrame
+df.createOrReplaceTempView("employees")
+
+# Select all columns
+df_sql = spark.sql("SELECT * FROM employees")
+
+# Select specific columns
+df_sql = spark.sql("SELECT name, salary FROM employees")
+
+# Filter data
+df_sql = spark.sql("SELECT * FROM employees WHERE salary > 50000")
+
+# Aggregations
+df_sql = spark.sql("SELECT department, AVG(salary) AS avg_salary FROM employees GROUP BY department")
+
+# Sorting
+df_sql = spark.sql("SELECT * FROM employees ORDER BY salary DESC")
+
+# Using LIMIT
+df_sql = spark.sql("SELECT * FROM employees LIMIT 10")
+
+# Using CASE WHEN
+df_sql = spark.sql("""
+    SELECT name, salary,
+    CASE 
+        WHEN salary > 50000 THEN 'High'
+        ELSE 'Low'
+    END AS salary_category
+    FROM employees
+""")
+
+-- Without Temp View
+# Load any dataframe
+df = spark.read.format('csv').option('header', 'true').load('/samples/customers.csv')
+# Use Spark SQL with a variable and pass the dataframe
+spark.sql("select first_name from {customers_df}",customers_df = df).show()
+
+# Load any dataframe
+df2 = spark.read.format('csv').option('header', 'true').load('/samples/orders.csv')
+# Use Spark SQL with a variable and pass the dataframe
+spark.sql("select order_id from {orders_df}",orders_df = df2).show()

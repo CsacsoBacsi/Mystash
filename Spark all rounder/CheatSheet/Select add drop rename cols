@@ -1,0 +1,73 @@
+-- Selecting Columns
+# Select single column
+df = df.select("name")
+
+# Select multiple columns
+df = df.select("name", "age")
+
+# Select columns dynamically
+columns_to_select = ["name", "department"]
+df = df.select(*columns_to_select)
+
+-- Renaming Columns
+# Rename a column
+df = df.withColumnRenamed("name", "full_name")
+
+# Rename multiple columns with chained calls
+df = df.withColumnRenamed("old_col1", "new_col1")\
+       .withColumnRenamed("old_col2", "new_col2")
+
+# Rename columns using select and alias
+from pyspark.sql.functions import col
+df = df.select(
+    col("old_column_name1").alias("new_column_name1"),
+    col("old_column_name2").alias("new_column_name2"),
+    # Add more columns as needed
+)
+
+-- Adding Columns
+from pyspark.sql.functions import col, lit, expr, when
+
+# Add a new, empty (null) column
+df = df.withColumn("country", lit(None).cast(StringType())
+
+# Add a new column with a constant value
+df = df.withColumn("country", lit("USA"))
+
+# Add a new column with a calculated value
+df = df.withColumn("salary_after_bonus", col("salary") * 1.1)
+
+# Add a column using an SQL expression
+df = df.withColumn("tax", expr("salary * 0.2"))
+
+# Add a column with conditional logic
+df = df.withColumn("high_earner", when(col("salary") > 55000, "Yes").otherwise("No"))
+
+# Case When with multiple conditions
+df = df.withColumn(
+    "salary_category",
+    when(col("salary") < 60000, "Low")
+    .when((col("salary") >= 60000) & (col("salary") < 90000), "Medium")
+    .otherwise("High")
+)
+
+# Add multiple columns at once
+df = df.withColumns({
+    "bonus": col("salary") * 0.1,
+    "net_salary": col("salary") - (col("salary") * 0.2)
+})
+
+# Make a new Struct column (similar to Python's `dict()`) – F.struct(*cols)
+df = df.withColumn('my_struct', F.struct(F.col('col_a'), F.col('col_b')))
+
+# Get item from struct by key – col.getField(str)
+df = df.withColumn('col_a', F.col('my_struct').getField('col_a'))
+
+-- Dropping Columns
+# Drop a column
+df = df.drop("department")
+
+# Drop multiple columns
+df = df.drop('column1', 'column2', 'column3')
+Filtering
+You can refer to columns using any of these notations: df.age , df['age'], col('age')

@@ -1,0 +1,87 @@
+                                               In PySpark, the data types are similar,
+            INT: for integer values
+                                               but are represented differently.
+            BIGINT: for large integer values
+            FLOAT: for floating point values
+            DOUBLE: for double precision       IntegerType: for integer values
+            floating point values              LongType: for long integer values
+            CHAR: for fixed-length character   FloatType: for floating point values
+Datatypes
+            strings                            DoubleType: for double precision floating
+            VARCHAR: for variable-length       point values
+            character strings
+                                               StringType: for character strings
+            DATE: for date values
+                                               TimestampType: for timestamp values
+            TIMESTAMP: for timestamp values
+                                               DateType: for date values
+
+            CREATE TABLE table_name
+ Create                                                df.write.format("parquet")\
+            (column_name data_type
+ Table                                                .saveAsTable("table_name")
+             constraint);
+
+                                               from pyspark.sql.types import StructType,
+                                                 StructField, IntegerType, StringType, DecimalType
+
+                 CREATE TABLE table_name(
+  Create                                        schema = StructType([
+                   column_name data_type
+                                                  StructField("id", IntegerType(), True),
+Table with             [constraints],
+                                                  StructField("name", StringType(), False),
+ Columns           column_name data_type
+                                                  StructField("age", IntegerType(), True),
+ definition            [constraints],
+                                                  StructField("salary", DecimalType(10,2), True)])
+                              ...);
+                                                df = spark.createDataFrame([], schema)
+
+              CREATE TABLE table_name(
+               column_name data_type           In PySpark or HiveQL, primary key constraints
+  Create      PRIMARY KEY,                     are not enforced directly. However, you can use
+               ...);
+Table with                                     the dropDuplicates() method to remove
+ Primary                                       duplicate rows based on one or more columns.
+              If table already exists:
+   Key        ALTER TABLE table_name
+              ADD PRIMARY KEY                  df = df.dropDuplicates(["id"])
+              (column_name);
+
+                                               not natively supported by the DataFrame API,
+                                               but there are several ways to achieve the same
+  Create      CREATE TABLE table_name(         functionality.
+Table with     id INT AUTO_INCREMENT,
+   Auto        name VARCHAR(255),               from pyspark.sql.functions import
+Increment      PRIMARY KEY (id));               monotonically_increasing_id
+constraint                                      df = df.withColumn("id",
+                                                monotonically_increasing_id()+start_value)
+
+Adding a                                       from pyspark.sql.functions import lit
+                ALTER TABLE table_name
+ column                                        df=df.withColumn("column_name",
+               ADD column_name datatype;
+                                              lit(None).cast("datatype"))
+
+Modifying    ALTER TABLE table_name           df=df.withColumn("column_name",
+a column     MODIFY column_name datatype;     df["column_name"].cast("datatype"))
+
+
+Dropping a
+             ALTER TABLE table_name
+ column                                       df = df.drop("column_name")
+              DROP COLUMN column_name;
+
+             ALTER TABLE table_name
+              RENAME COLUMN
+             old_column_name TO
+             new_column_name;
+Rename a
+                                               df =df.withColumnRenamed("existing_column",
+ column        In mysql,
+                                              "new_column")
+               ALTER TABLE employees
+               CHANGE COLUMN first_name
+             first_name_new
+               VARCHAR(255);

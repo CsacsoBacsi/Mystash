@@ -1,0 +1,34 @@
+-- CSV Files
+#Basic CSV files
+df = spark.read.format("csv").load("/path/to/sample.csv")
+
+#csv with header
+df = spark.read.option("header",True).csv("/path/to/sample.csv")
+
+# multiple options
+df = spark.read.option("inferSchema",True).option("delimiter",",").csv("/path/to/sample.csv")
+
+# with defined schema
+from pyspark.sql.types import StructType, StructField, StringType, IntegerType
+schema = StructType([
+    StructField("name", StringType(), True),
+    StructField("age", IntegerType(), True)
+])
+df = spark.read.format("csv").schema(schema).load("/path/to/sample.csv")
+
+-- JSON Files
+# Basic JSON file
+df = spark.read.format("json").load("/path/to/sample.json")
+
+# JSON with multi-line records
+df = spark.read.option("multiline", True).json("/path/to/sample.json")
+
+# JSON with a defined schema
+from pyspark.sql.types import StructType, StructField, StringType, IntegerType
+
+schema = StructType([
+    StructField("name", StringType(), True),
+    StructField("age", IntegerType(), True)
+])
+
+df = spark.read.format("json").schema(schema).load("/path/to/sample.json")

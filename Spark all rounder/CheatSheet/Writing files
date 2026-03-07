@@ -1,0 +1,102 @@
+-- CSV Files
+# Basic write to CSV
+df.write.csv("/path/to/output_csv")
+
+# With header
+df.write.option("header", True).csv("/path/to/output_csv")
+
+# With multiple options
+df.write.option("header", True)\
+    .option("delimiter", ",")\
+    .option("quote", '"')\
+    .csv("/path/to/output_csv")
+
+# Overwrite existing files
+df.write.mode("overwrite").option("header", True).csv("/path/to/output_csv")
+
+# Append to existing data
+df.write.mode("append").option("header", True).csv("/path/to/output_csv")
+
+# Write as a single file
+df.coalesce(1).write.option("header", True).csv("/path/to/output_csv")
+JSON Files
+# Basic JSON write
+df.write.json("/path/to/output_json")
+
+# Overwrite mode
+df.write.mode("overwrite").json("/path/to/output_json")
+
+# Append mode
+df.write.mode("append").json("/path/to/output_json")
+
+# Pretty format (for readability)
+df.write.option("compression", "none").json("/path/to/output_json")
+
+# Partitioned output
+df.write.partitionBy("column_name").json("/path/to/output_json")
+
+-- Parquet Files
+# Basic Parquet write
+df.write.parquet("/path/to/output_parquet")
+
+# Overwrite mode
+df.write.mode("overwrite").parquet("/path/to/output_parquet")
+
+# Append mode
+df.write.mode("append").parquet("/path/to/output_parquet")
+
+# Partitioned output
+df.write.partitionBy("column_name").parquet("/path/to/output_parquet")
+
+# Compression options (default is snappy)
+df.write.option("compression", "gzip").parquet("/path/to/output_parquet")
+
+-- ORC Files
+# Basic ORC write
+df.write.orc("/path/to/output_orc")
+
+# Overwrite mode
+df.write.mode("overwrite").orc("/path/to/output_orc")
+
+# Append mode
+df.write.mode("append").orc("/path/to/output_orc")
+
+# Partitioned output
+df.write.partitionBy("column_name").orc("/path/to/output_orc")
+
+# Compression options
+df.write.option("compression", "zlib").orc("/path/to/output_orc")
+Delta Tables/Files (Requires Delta Lake)
+# Basic Delta write
+df.write.format("delta").save("/path/to/output_delta")
+
+-- Basic Delta Table
+df.write.format("delta").saveAsTable("table_name")
+
+# Overwrite mode
+df.write.format("delta").mode("overwrite").save("/path/to/output_delta")
+
+# Append mode
+df.write.format("delta").mode("append").save("/path/to/output_delta")
+
+# With Delta-specific options (mergeSchema, overwriteSchema)
+df.write.format("delta")\
+    .option("overwriteSchema", "true")\
+    .mode("overwrite")\
+    .save("/path/to/output_delta")
+
+# Partitioned output
+df.write.format("delta").partitionBy("column_name").save("/path/to/output_delta")
+
+
+# Bucketing
+df.write.bucketBy(numBuckets=4, col="column_name")\
+    .sortBy("column_name")\
+    .saveAsTable("table_name")
+
+# Bucketing by "name" into 4 buckets, sorting within each bucket
+df.write \
+  .bucketBy(4, "name") \
+  .sortBy("age") \
+  .mode("overwrite") \
+  .saveAsTable("bucketed_people")

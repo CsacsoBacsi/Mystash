@@ -1,0 +1,21 @@
+from pyspark.sql.functions import udf
+from pyspark.sql.types import IntegerType
+
+# Define a UDF
+def multiply_by_two(x):
+    return x * 2
+
+multiply_udf = udf(multiply_by_two, IntegerType())
+
+# Apply UDF
+df.withColumn("new_column", multiply_udf(df["column"])).show()
+
+# Multiply each row's age column by two
+times_two_udf = F.udf(lambda x: x * 2)
+df = df.withColumn('age', times_two_udf(df.age))
+
+# Randomly choose a value to use as a row's name
+import random
+
+random_name_udf = F.udf(lambda: random.choice(['Bob', 'Tom', 'Amy', 'Jenna']))
+df = df.withColumn('name', random_name_udf())

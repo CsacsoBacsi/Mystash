@@ -1,0 +1,99 @@
+﻿-- Single Field Extraction
+from pyspark.sql.functions import get_json_object
+
+# Extract a single field using JSONPath notation
+# Input: '{"name": "Alice", "age": 30}'
+# Output: "Alice"
+df = df.withColumn("name", get_json_object("json_col", "$.name"))
+
+# Extract nested field
+# Input: '{"address": {"city": "Bangalore"}}'
+# Output: "Bangalore"
+df = df.withColumn("city", get_json_object("json_col", "$.address.city"))
+
+# Extract from array inside JSON
+# Input: '{"scores": [90, 85, 78]}'
+# Output: "90"
+df = df.withColumn("first_score", get_json_object("json_col", "$.scores[0]"))
+get_json_object always returns a string, even if the source value is numeric or boolean.
+
+-- Multiple Fields at Once
+from pyspark.sql.functions import json_tuple
+
+# Extract multiple fields simultaneously — returns new columns c0, c1, ...
+# Input: '{"f1": "value1", "f2": "value2"}'
+# Output: col c0 = "value1", col c1 = "value2"
+df = df.select("id", json_tuple("json_col", "f1", "f2").alias("f1", "f2"))
+json_tuple is more efficient than calling get_json_object multiple times on the same column since it parses the JSON string only once. Unlike get_json_object, it does not support JSONPath dot-notation for nested fields.
+
+-- JSON String → Struct Type
+from pyspark.sql.functions import from_json
+from pyspark.sql.types import StructType, StructField, StringType, IntegerType
+
+# Define schema explicitly
+schema = StructType([
+    StructField("name", StringType(), True),
+    StructField("age",  IntegerType(), True),
+    StructField("city", StringType(), True)
+])
+
+# Input: '{"name": "Alice", "age": 30, "city": "Bangalore"}'
+# Output: Struct column with queryable sub-fields
+df = df.withColumn("parsed", from_json("json_col", schema))
+
+# Access sub-fields after parsing
+df = df.withColumn("name", df["parsed.name"])
+       .withColumn("age",  df["parsed.age"])
+
+-- Infer Schema Automatically
+from pyspark.sql.functions import schema_of_json, from_json
+from pyspark.sql.functions import lit
+
+# Step 1: Infer schema from a sample JSON string literal (not a column)
+# schema_of_json requires a foldable (constant) string, not a column reference
+inferred_schema = schema_of_json(lit('{"name": "Alice", "age": 30}'))
+
+# Step 2: Use the inferred schema to parse the actual column
+df = df.withColumn("parsed", from_json("json_col", inferred_schema))
+schema_of_json requires a literal string (use lit()), not a column reference — passing a column directly will throw an AnalysisException.
+
+-- Struct/Map → JSON String
+from pyspark.sql.functions import to_json, struct
+
+# 1. Convert a Struct column back to a JSON string
+# Input: Struct(name="Alice", age=30)
+# Output: '{"name":"Alice","age":30}'
+df = df.withColumn("json_str", to_json(struct("name", "age")))
+
+# 2. Convert the entire row to JSON
+df = df.withColumn("full_json", to_json(struct([c for c in df.columns])))
+
+-- Flattening Nested JSON
+from pyspark.sql.functions import from_json, col
+from pyspark.sql.types import StructType, StructField, StringType, IntegerType
+
+schema = StructType([
+    StructField("name",    StringType(),  True),
+    StructField("address", StructType([
+        StructField("city",    StringType(), True),
+        StructField("pincode", IntegerType(), True)
+    ]), True)
+])
+
+# JSON shape this schema expects:
+# {
+#   "name": "Alice",
+#   "address": {
+#     "city": "Bangalore",
+#     "pincode": 560001
+#   }
+# }
+
+# Parse first, then flatten nested struct fields with dot notation
+df = (df
+    .withColumn("parsed", from_json("json_col", schema))
+    .withColumn("name",    col("parsed.name"))
+    .withColumn("city",    col("parsed.address.city"))
+    .withColumn("pincode", col("parsed.address.pincode"))
+    .drop("parsed")
+)

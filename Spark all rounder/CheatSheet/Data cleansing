@@ -1,0 +1,27 @@
+# 1. Drop all fully duplicate rows
+# Removes rows where all columns match exactly
+df = df.dropDuplicates()
+
+# 2. Drop duplicates based on specific columns
+# Keeps the first row for each unique email
+df = df.dropDuplicates(["email"])
+
+# 3. Get only distinct rows (same as SELECT DISTINCT)
+# Removes duplicates across all columns
+df = df.distinct()
+
+# 4. Drop rows with any null values
+# Removes rows with even a single null field
+df = df.dropna()
+
+# 5. Drop rows with nulls in specific columns
+# Only keeps rows where 'email' and 'age' are not null
+df = df.dropna(subset=["email", "age"])
+
+# 6. Fill missing values for all columns
+# Replaces all nulls with a default value
+df = df.fillna("N/A")
+
+# 7. Fill missing values for specific columns
+# Sets default age as 0 and country as "Unknown" if missing
+df = df.fillna({"age": 0, "country": "Unknown"})

@@ -1,0 +1,50 @@
+-- With Default Schema
+from pyspark.sql import SparkSession
+
+spark = SparkSession.builder.appName("Example").getOrCreate()
+
+data = [(1, "Alice", 29), (2, "Bob", 35)]
+df = spark.createDataFrame(data, ["id", "name", "age"])
+df.show()
+-- Explicit Schema
+from pyspark.sql.types import StructType, StructField, IntegerType, StringType
+
+schema = StructType([
+    StructField("id", IntegerType(), True),
+    StructField("name", StringType(), True),
+    StructField("age", IntegerType(), True)
+])
+
+df = spark.createDataFrame(data, schema)
+df.printSchema()
+df.show()
+
+# Schema as a string
+data = [(1, "Alice", 29), (2, "Bob", 35)]
+schema = "id INT, name STRING, age INT"
+df = spark.createDataFrame(data, schema=schema)
+
+# Schema String with Float and Boolean Types
+schema = "id INT, name STRING, salary FLOAT, is_active BOOLEAN"
+data = [(1, "Alice", 50000.75, True), (2, "Bob", 60000.50, False)]
+df = spark.createDataFrame(data, schema=schema)
+
+# Schema String with Date and Timestamp
+from datetime import date, datetime
+schema = "id INT, name STRING, join_date DATE, last_login TIMESTAMP"
+data = [(1, "Alice", date(2023, 1, 15), datetime(2024, 3, 10, 14, 30, 0)),
+        (2, "Bob", date(2023, 1, 15), datetime(2024, 3, 10, 14, 30, 0))]
+df = spark.createDataFrame(data, schema=schema)
+Using a List of Dictionaries
+from pyspark.sql import SparkSession
+
+spark = SparkSession.builder.appName("Example").getOrCreate()
+
+data = [
+    {"id": 1, "name": "Alice", "age": 29},
+    {"id": 2, "name": "Bob", "age": 35}
+]
+
+df = spark.createDataFrame(data)
+df.show()
+
