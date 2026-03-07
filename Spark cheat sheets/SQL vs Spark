@@ -1,0 +1,276 @@
+                 SQL & PYSPARK EQUIVALENT
+
+
+                ***** DML OPERATIONS *****
+
+
+Concept                  SQL                                    PySpark
+              SELECT column(s) FROM table              df.select("column(s)")
+ SELECT
+                  SELECT * FROM table                       df.select("*")
+
+
+            SELECT DISTINCT column(s) FROM       df.select("column(s)").distinct()
+DISTINCT
+                         table
+
+
+              SELECT column(s) FROM table                df.filter(condition)\
+ WHERE
+                   WHERE condition                      .select("column(s)")
+
+
+              SELECT column(s) FROM table               df.sort("column(s)")\
+ORDER BY
+                  ORDER BY column(s)                    .select("column(s)")
+
+
+ LIMIT     SELECT column(s) FROM table LIMIT n     df.limit(n).select("column(s)")
+
+
+
+              SELECT COUNT(*) FROM table
+ COUNT                                                          df.count()
+
+
+                                              from pyspark.sql.functions import sum;
+  SUM        SELECT SUM(column) FROM table
+                                              df.agg(sum("column"))
+
+
+                                              from pyspark.sql.functions import avg;
+  AVG        SELECT AVG(column) FROM table
+                                              df.agg(avg("column"))
+
+
+             SELECT MAX(column)               from pyspark.sql.functions import max;
+MAX / MIN
+             FROM table                       df.agg(max("column"))
+
+
+ String                                       from pyspark.sql.functions import length;
+             SELECT LEN(string) FROM table
+ Length                                       df.select(length(col("string")))
+
+
+
+Convert to   SELECT UPPER(string)             from pyspark.sql.functions import upper;
+Uppercase    FROM table                       df.select(upper(col("string")))
+
+
+Convert to   SELECT LOWER(string)             from pyspark.sql.functions import lower;
+Lowercase    FROM table                       df.select(lower(col("string")))
+
+
+                                              from pyspark.sql.functions import concat;
+Concatenate   SELECT CONCAT(string1,
+                                              df.select(concat(col("string1"),
+  Strings     string2) FROM table
+                                                               col("string2")))
+
+
+
+              SELECT TRIM(string)             from pyspark.sql.functions import trim;
+Trim String
+              FROM table                      df.select(trim(col("string")))
+
+
+              SELECT SUBSTRING(string,        from pyspark.sql.functions import substring;
+ Substring
+              start, length) FROM table       df.select(substring(col("string"),start, length))
+
+
+
+CURDATE,
+                                              from pyspark.sql.functions import current_date;
+NOW,          SELECT CURDATE() FROM table
+                                              df.select(current_date())
+CURTIME
+
+
+
+CAST,         SELECT CAST(column AS
+                                              df.select(col("column").cast("datatype"))
+CONVERT       datatype) FROM table
+
+
+                                              from pyspark.sql.functions import when,
+              SELECT IF(condition, value1,    otherwise;
+    IF
+              value2) FROM table              df.select(when(condition,value1)\
+                                              .otherwise(value2))
+
+
+               SELECT COALESCE(column1,       from pyspark.sql.functions import coalesce;
+COALESCE        column2, column3) FROM        df.select(coalesce("column1","column2",
+                          table               "column3"))
+
+
+              JOIN table1 ON table1.column
+   JOIN                                       df1.join(df2, "column")
+              = table2.column
+
+
+
+GROUP BY          GROUP BY column(s)          df.groupBy("column(s)")
+
+
+
+              PIVOT (agg_function(column)     df.groupBy("pivot_column")\
+  PIVOT
+              FOR pivot_column IN (values))   .pivot("column").agg(agg_function)
+
+
+              SELECT column FROM table
+ Logical                                      df.filter((col("column1") == value)
+              WHERE column1 = value
+Operators                                              & (col("column2") > value))
+               AND column2 > value
+
+
+
+IS NULL, IS   SELECT column FROM table        df.filter(col("column").isNull())\
+NOT NULL      WHERE column IS NULL            .select("column")
+
+
+
+              SELECT column FROM table        df.filter(col("column")\
+    IN        WHERE column                    .isin(value1,value2,value3))\
+              IN (value1,value2, value3)      .select("column")
+ Concept                SQL                                  PySpark
+
+             SELECT column FROM table
+   LIKE                                        df.filter(col("column").like("value%"))
+             WHERE column LIKE 'value%'
+
+
+             SELECT column FROM table        df.filter((col("column") >= value1)
+ BETWEEN     WHERE column                            & (col("column") <= value2))\
+             BETWEEN value1 AND value2       .select("column")
+
+
+             SELECT column FROM table1
+  UNION,                                     df1.union(df2).select("column") or
+             UNION SELECT column FROM
+ UNION ALL                                   df1.unionAll(df2).select("column")
+             table2
+
+                                             from pyspark.sql import Window;
+             SELECT column, RANK() OVER      from pyspark.sql.functions import rank;
+  RANK,
+             (ORDER BY column) as            df.select("column",
+DENSERANK,
+              rank FROM table                rank().over(Window.orderBy("column"))\
+ROWNUMBER
+                                             .alias("rank"))
+
+                                         df.createOrReplaceTempView("cte1");
+             WITH cte1 AS (SELECT * FROM
+                                         df_cte1 = spark.sql("SELECT * FROM
+                       table1),
+                                         cte1 WHERE condition");
+    CTE       SELECT * FROM cte1 WHERE
+                      condition          df_cte1.show() or
+                                         df.filter(condition1).filter(condition2)
+
+
+
+                        ***** DDL operations *****
+
+
+                                               In PySpark, the data types are similar,
+            INT: for integer values
+                                               but are represented differently.
+            BIGINT: for large integer values
+            FLOAT: for floating point values
+            DOUBLE: for double precision       IntegerType: for integer values
+            floating point values              LongType: for long integer values
+            CHAR: for fixed-length character   FloatType: for floating point values
+Datatypes
+            strings                            DoubleType: for double precision floating
+            VARCHAR: for variable-length       point values
+            character strings
+                                               StringType: for character strings
+            DATE: for date values
+                                               TimestampType: for timestamp values
+            TIMESTAMP: for timestamp values
+                                               DateType: for date values
+
+
+            CREATE TABLE table_name
+ Create                                                df.write.format("parquet")\
+            (column_name data_type
+ Table                                                .saveAsTable("table_name")
+             constraint);
+
+                                               from pyspark.sql.types import StructType,
+                                                 StructField, IntegerType, StringType, DecimalType
+
+                 CREATE TABLE table_name(
+  Create                                        schema = StructType([
+                   column_name data_type
+                                                  StructField("id", IntegerType(), True),
+Table with             [constraints],
+                                                  StructField("name", StringType(), False),
+ Columns           column_name data_type
+                                                  StructField("age", IntegerType(), True),
+ definition            [constraints],
+                                                  StructField("salary", DecimalType(10,2), True)])
+                              ...);
+                                                df = spark.createDataFrame([], schema)
+
+
+              CREATE TABLE table_name(
+               column_name data_type           In PySpark or HiveQL, primary key constraints
+  Create      PRIMARY KEY,                     are not enforced directly. However, you can use
+               ...);
+Table with                                     the dropDuplicates() method to remove
+ Primary                                       duplicate rows based on one or more columns.
+              If table already exists:
+   Key        ALTER TABLE table_name
+              ADD PRIMARY KEY                  df = df.dropDuplicates(["id"])
+              (column_name);
+
+                                               not natively supported by the DataFrame API,
+                                               but there are several ways to achieve the same
+  Create      CREATE TABLE table_name(         functionality.
+Table with     id INT AUTO_INCREMENT,
+   Auto        name VARCHAR(255),               from pyspark.sql.functions import
+Increment      PRIMARY KEY (id));               monotonically_increasing_id
+constraint                                      df = df.withColumn("id",
+                                                monotonically_increasing_id()+start_value)
+
+
+
+
+Adding a                                       from pyspark.sql.functions import lit
+                ALTER TABLE table_name
+ column                                        df=df.withColumn("column_name",
+               ADD column_name datatype;
+                                              lit(None).cast("datatype"))
+
+
+Modifying    ALTER TABLE table_name           df=df.withColumn("column_name",
+a column     MODIFY column_name datatype;     df["column_name"].cast("datatype"))
+
+
+Dropping a
+             ALTER TABLE table_name
+ column                                       df = df.drop("column_name")
+              DROP COLUMN column_name;
+
+
+             ALTER TABLE table_name
+              RENAME COLUMN
+             old_column_name TO
+             new_column_name;
+Rename a
+                                               df =df.withColumnRenamed("existing_column",
+ column        In mysql,
+                                              "new_column")
+               ALTER TABLE employees
+               CHANGE COLUMN first_name
+             first_name_new
+               VARCHAR(255);
+
+
