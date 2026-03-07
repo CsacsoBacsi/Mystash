@@ -1,5 +1,7 @@
-﻿Create DataFrame
-With Default Schema
+﻿
+*** Create DataFrame ***
+
+-- With Default Schema
 from pyspark.sql import SparkSession
 
 spark = SparkSession.builder.appName("Example").getOrCreate()
@@ -7,7 +9,7 @@ spark = SparkSession.builder.appName("Example").getOrCreate()
 data = [(1, "Alice", 29), (2, "Bob", 35)]
 df = spark.createDataFrame(data, ["id", "name", "age"])
 df.show()
-Explicit Schema
+-- Explicit Schema
 from pyspark.sql.types import StructType, StructField, IntegerType, StringType
 
 schema = StructType([
@@ -48,8 +50,10 @@ data = [
 
 df = spark.createDataFrame(data)
 df.show()
-Reading Files
-CSV Files
+
+*** Reading Files ***
+
+-- CSV Files
 #Basic CSV files
 df = spark.read.format("csv").load("/path/to/sample.csv")
 
@@ -66,7 +70,8 @@ schema = StructType([
     StructField("age", IntegerType(), True)
 ])
 df = spark.read.format("csv").schema(schema).load("/path/to/sample.csv")
-JSON Files
+
+-- JSON Files
 # Basic JSON file
 df = spark.read.format("json").load("/path/to/sample.json")
 
@@ -82,8 +87,10 @@ schema = StructType([
 ])
 
 df = spark.read.format("json").schema(schema).load("/path/to/sample.json")
-Writing Files
-CSV Files
+
+*** Writing Files ***
+
+-- CSV Files
 # Basic write to CSV
 df.write.csv("/path/to/output_csv")
 
@@ -119,7 +126,9 @@ df.write.option("compression", "none").json("/path/to/output_json")
 
 # Partitioned output
 df.write.partitionBy("column_name").json("/path/to/output_json")
-Parquet Files
+
+*** Parquet Files ***
+
 # Basic Parquet write
 df.write.parquet("/path/to/output_parquet")
 
@@ -153,7 +162,8 @@ Delta Tables/Files (Requires Delta Lake)
 # Basic Delta write
 df.write.format("delta").save("/path/to/output_delta")
 
-# Basic Delta Table
+*** Basic Delta Table ***
+
 df.write.format("delta").saveAsTable("table_name")
 
 # Overwrite mode
@@ -183,8 +193,9 @@ df.write \
   .mode("overwrite") \
   .saveAsTable("bucketed_people")
 
-Select, Drop, Rename Columns
-Selecting Columns
+*** Select, Drop, Rename Columns ***
+
+-- Selecting Columns
 # Select single column
 df = df.select("name")
 
@@ -194,7 +205,8 @@ df = df.select("name", "age")
 # Select columns dynamically
 columns_to_select = ["name", "department"]
 df = df.select(*columns_to_select)
-Renaming Columns
+
+-- Renaming Columns
 # Rename a column
 df = df.withColumnRenamed("name", "full_name")
 
@@ -209,7 +221,8 @@ df = df.select(
     col("old_column_name2").alias("new_column_name2"),
     # Add more columns as needed
 )
-Adding Columns
+
+-- Adding Columns
 from pyspark.sql.functions import col, lit, expr, when
 
 # Add a new, empty (null) column
@@ -241,7 +254,7 @@ df = df.withColumns({
     "net_salary": col("salary") - (col("salary") * 0.2)
 })
 
-Dropping Columns
+-- Dropping Columns
 # Drop a column
 df = df.drop("department")
 
@@ -250,7 +263,8 @@ df = df.drop('column1', 'column2', 'column3')
 Filtering
 You can refer to columns using any of these notations: df.age , df['age'], col('age')
 
-Basic Filtering
+*** Basic Filtering ***
+
 # Filter on >, <, >=, <=, == condition
 df_filtered = df.filter(df.age > 30)
 df_filtered = df.filter(df['age'] > 30)
@@ -294,7 +308,9 @@ departments = ["Engineering", "Finance"]
 df_filtered = df.filter(col("department").isin(departments))
 # Negate the filter (not in list)
 df_filtered = df.filter(~col("department").isin(departments))
-Data Cleansing
+
+*** Data Cleansing ***
+
 # 1. Drop all fully duplicate rows
 # Removes rows where all columns match exactly
 df = df.dropDuplicates()
@@ -322,7 +338,9 @@ df = df.fillna("N/A")
 # 7. Fill missing values for specific columns
 # Sets default age as 0 and country as "Unknown" if missing
 df = df.fillna({"age": 0, "country": "Unknown"})
-Grouping
+
+*** Grouping ***
+
 Import the required functions
 
 from pyspark.sql.functions import count, sum, avg, min, max, countDistinct, collect_list, collect_set
@@ -355,7 +373,7 @@ df.groupBy("Department").agg(
 #Filter after aggregation
 df.groupBy("Department").agg(sum("Salary").alias("Total_Salary")).filter("Total_Salary > 8000").show()
 
-Common Aggregation Functions
+-- Common Aggregation Functions
 Function	Description	Example
 count()	Counts rows in a group.	groupBy("Department").count()
 sum()	Sums values in a group.	groupBy("Department").sum("Salary")
@@ -365,8 +383,10 @@ max()	Finds the maximum value.	groupBy("Department").max("Salary")
 countDistinct()	Counts distinct values in a group.	countDistinct("Employee")
 collect_list()	Collects all values into a list.	collect_list("Employee")
 collect_set()	Collects unique values into a set.	collect_set("Employee")
-Joins
-Join Types
+
+*** Joins ***
+
+-- Join Types
 Join Type	Syntax	Description
 inner	how="inner"	Returns matching rows from both DataFrames based on the join condition.
 outer (full)	how="outer	Returns all rows, with NULL where no match is found in either DataFrame.
@@ -375,7 +395,8 @@ right (right_outer)	how="right"	Returns all rows from the right DataFrame, with 
 left_semi	how="left_semi"	This is just an inner join of the two DataFrames, but only returns columns of left DataFrame.
 left_anti	how="left_anti"	Returns rows from the left DataFrame that do not have a match in the right.
 cross	df1.crossJoin(df2)	Returns the Cartesian product of rows from both DataFrames (no join condition).
-Basic Syntax
+
+-- Basic Syntax
 # Basic Join
 df1.join(df2, on="id", how="inner")
 
@@ -397,8 +418,10 @@ result = df1.join(df2, on="id", how="left").select(df1["*"], df2["state"] , df2[
 # Broadcast Join for Small DataFrames
 from pyspark.sql.functions import broadcast
 df1.join(broadcast(df2), on="id", how="inner")
-Date and Time Functions
-String to Date Format
+
+*** Date and Time Functions ***
+
+-- String to Date Format
 from pyspark.sql.functions import to_date
 
 # 1. Convert string date to date type (using "yyyy-MM-dd")
@@ -442,7 +465,8 @@ df = df.withColumn("timestamp_parsed3", to_timestamp("timestamp_str", "MM/dd/yyy
 # Input: "2025.01.25 10:15:00"
 # Output: 2025-01-25 10:15:00 (as a Timestamp type)
 df = df.withColumn("timestamp_parsed4", to_timestamp("timestamp_str", "yyyy.MM.dd HH:mm:ss"))
-Date to String Format
+
+-- Date to String Format
 from pyspark.sql.functions import date_format
 # 1. Format date as "yyyy-MM-dd"
 # Input: 2025-01-25 (Date Type)
@@ -483,7 +507,8 @@ df = df.withColumn("formatted_date7", date_format("date_parsed", "yyyy/MM/dd"))
 # Input: 2025-01-25 (Date Type)
 # Output: "2025.01.25" (String Type)
 df = df.withColumn("formatted_date8", date_format("date_parsed", "yyyy.MM.dd"))
-Timestamp to String Format
+
+-- Timestamp to String Format
 from pyspark.sql.functions import date_format
 
 # 1. Format timestamp as "yyyy-MM-dd HH:mm:ss"
@@ -529,7 +554,7 @@ df = df.withColumn("formatted_timestamp8", date_format("timestamp", "yyyy.MM.dd 
 # Show the resulting DataFrame
 df.show(truncate=False)
 
-Date Functions
+-- Date Functions
 from pyspark.sql import SparkSession
 from pyspark.sql.functions import (
     current_date, date_add, date_sub, datediff, add_months,
@@ -589,7 +614,8 @@ df = df.withColumn("next_monday", next_day("date", "Monday"))
 # 13. Last day of the month
 # "2025-01-25" -> "2025-01-31"
 df = df.withColumn("last_day_month", last_day("date"))
-Time Functions
+
+-- Time Functions
 from pyspark.sql import SparkSession
 from pyspark.sql.functions import (
     current_timestamp, hour, minute, second, unix_timestamp, from_unixtime
@@ -618,8 +644,10 @@ df = df.withColumn("unix_timestamp", unix_timestamp("timestamp"))
 # 6. Convert Unix timestamp to readable date
 # "1737763200" -> "2025-01-25 10:15:00"
 df = df.withColumn("from_unix", from_unixtime(unix_timestamp("timestamp")))
-Math Functions
-Simple Arithmetic
+
+*** Math Functions ***
+
+-- Simple Arithmetic
 # 1. Add two columns
 # Input: col1 = 10, col2 = 5
 # Output: 15 (col1 + col2)
@@ -649,7 +677,8 @@ df = df.withColumn("sum_with_constant", col("col1") + 5)
 # Input: col1 = 10
 # Output: 5 (col1 - 5)
 df = df.withColumn("difference_with_constant", col("col1") - 5)
-Complex Arithmetic
+
+-- Complex Arithmetic
 from pyspark.sql.functions import (
     abs, round, floor, ceil, exp, log, sqrt, pow
 )
@@ -693,8 +722,10 @@ df = df.withColumn("sqrt_value", sqrt("value"))
 # Input: 3
 # Output: 9
 df = df.withColumn("pow_value", pow("value", 2))
-String Functions
-Basic String Functions
+
+*** String Functions ***
+
+-- Basic String Functions
 # 1. Concatenate two strings
 # Input: "hello world" + " !!!"
 # Output: "hello world !!!"
@@ -753,7 +784,8 @@ df = df.withColumn("lower_text", lower(col("text")))
 # Input: "hello world"
 # Output: 11
 df = df.withColumn("length_of_text", length(col("text")))
-Trim and Pad Functions
+
+-- Trim and Pad Functions
 # 1. Trim: Remove both leading and trailing spaces from first_name
 # Input: "   John   "
 # Output: "John"
@@ -788,7 +820,8 @@ df = df.withColumn("lpad_first_name_zeros", lpad(col("first_name"), 10, "0"))
 # Input: "Doe"
 # Output: "Doe0000000"
 df = df.withColumn("rpad_last_name_zeros", rpad(col("last_name"), 10, "0"))
-Advanced String Functions
+
+-- Advanced String Functions
 # 1. Substring: Extract substring from the full_name starting from position 1 (inclusive) with length 4
 # Input: "John_Doe_30"
 # Output: "John"
@@ -823,7 +856,9 @@ df = df.withColumn("last_name", split(col("full_name"), "_")[1])
 # Input: "John_Doe_30"
 # Output: "30"
 df = df.withColumn("age", split(col("full_name"), "_")[2])
-Converting to Other Data Types
+
+*** Converting to Other Data Types ***
+
 # 1. Convert string to integer
 # Input: "12345"
 # Output: 12345 (as an Integer type)
@@ -858,8 +893,10 @@ df = df.withColumn("date_to_str", col("date_parsed").cast("string"))
 # Input: 2025-01-25 10:15:00 (Timestamp type)
 # Output: "2025-01-25 10:15:00" (String type)
 df = df.withColumn("timestamp_to_str", col("timestamp_parsed").cast("string"))
-Window Functions
-Basic Window Functions
+
+*** Window Functions ***
+
+-- Basic Window Functions
 Use orderBy() when order matters:
 
 Ranking Functions (row_number, rank, dense_rank)
@@ -900,7 +937,8 @@ df = df.withColumn("moving_avg", avg("salary").over(window_spec))
 
 # Show result
 df.show()
-With Rows Between
+
+-- With Rows Between
 from pyspark.sql.window import Window
 from pyspark.sql.functions import col, sum, avg, min, max, count
 
@@ -926,8 +964,10 @@ df = df.withColumn("total_rows", count("salary").over(window_spec5))
 
 # Show result
 df.show()
-Array Functions
-Creating and Manipulating Arrays
+
+*** Array Functions ***
+
+-- Creating and Manipulating Arrays
 from pyspark.sql.functions import array, size, sort_array, array_contains, explode, lit
 
 # 1. Create an array column from multiple columns
@@ -950,7 +990,7 @@ df = df.withColumn("sorted_array", sort_array("numbers"))
 # Output: true
 df = df.withColumn("has_blue", array_contains("colors", "blue"))
 
-Array Elements
+-- Array Elements
 from pyspark.sql.functions import element_at, col
 
 # 1. Get element at a specific position (1-based index)
@@ -962,7 +1002,8 @@ df = df.withColumn("second_item", element_at("letters", 2))
 # Input: ["x", "y", "z"], index = 1
 # Output: "y"
 df = df.withColumn("second_item_alt", col("letters").getItem(1))
-Modifying Array Elements
+
+-- Modifying Array Elements
 from pyspark.sql.functions import array_remove, array_distinct, array_union
 
 # 1. Remove a specific element from an array
@@ -979,7 +1020,8 @@ df = df.withColumn("unique_numbers", array_distinct("numbers"))
 # Input: [1, 2], [2, 3]
 # Output: [1, 2, 3]
 df = df.withColumn("merged_array", array_union("arr1", "arr2"))
-Arrays to Rows
+
+-- Arrays to Rows
 from pyspark.sql.functions import explode, posexplode
 
 # 1. Convert array elements into multiple rows
@@ -991,7 +1033,8 @@ df = df.withColumn("fruit", explode("fruits"))
 # Input: ["apple", "banana"]
 # Output: (0, "apple"), (1, "banana")
 df = df.select("id", posexplode("fruits").alias("pos", "fruit"))
-Rows to Array
+
+-- Rows to Array
 from pyspark.sql.functions import collect_list, collect_set
 
 # Input: Multiple rows with same category, e.g. {"cat": "A", "val": 1}, {"cat": "A", "val": 2}
@@ -1004,8 +1047,9 @@ df_grouped = df.groupBy("cat").agg(collect_list("val").alias("val_array"))
 df_grouped = df.groupBy("cat").agg(collect_set("val").alias("unique_vals"))
 Here is the equivalent cheat-sheet for PySpark JSON Functions, structured the same way as your array functions reference:
 
-JSON Functions
-Single Field Extraction
+*** JSON Functions ***
+
+-- Single Field Extraction
 from pyspark.sql.functions import get_json_object
 
 # Extract a single field using JSONPath notation
@@ -1024,7 +1068,7 @@ df = df.withColumn("city", get_json_object("json_col", "$.address.city"))
 df = df.withColumn("first_score", get_json_object("json_col", "$.scores[0]"))
 get_json_object always returns a string, even if the source value is numeric or boolean.
 
-Multiple Fields at Once
+-- Multiple Fields at Once
 from pyspark.sql.functions import json_tuple
 
 # Extract multiple fields simultaneously — returns new columns c0, c1, ...
@@ -1033,7 +1077,7 @@ from pyspark.sql.functions import json_tuple
 df = df.select("id", json_tuple("json_col", "f1", "f2").alias("f1", "f2"))
 json_tuple is more efficient than calling get_json_object multiple times on the same column since it parses the JSON string only once. Unlike get_json_object, it does not support JSONPath dot-notation for nested fields.
 
-JSON String → Struct Type
+-- JSON String → Struct Type
 from pyspark.sql.functions import from_json
 from pyspark.sql.types import StructType, StructField, StringType, IntegerType
 
@@ -1051,7 +1095,8 @@ df = df.withColumn("parsed", from_json("json_col", schema))
 # Access sub-fields after parsing
 df = df.withColumn("name", df["parsed.name"])
        .withColumn("age",  df["parsed.age"])
-Infer Schema Automatically
+
+-- Infer Schema Automatically
 from pyspark.sql.functions import schema_of_json, from_json
 from pyspark.sql.functions import lit
 
@@ -1063,7 +1108,7 @@ inferred_schema = schema_of_json(lit('{"name": "Alice", "age": 30}'))
 df = df.withColumn("parsed", from_json("json_col", inferred_schema))
 schema_of_json requires a literal string (use lit()), not a column reference — passing a column directly will throw an AnalysisException.
 
-Struct/Map → JSON String
+-- Struct/Map → JSON String
 from pyspark.sql.functions import to_json, struct
 
 # 1. Convert a Struct column back to a JSON string
@@ -1073,7 +1118,8 @@ df = df.withColumn("json_str", to_json(struct("name", "age")))
 
 # 2. Convert the entire row to JSON
 df = df.withColumn("full_json", to_json(struct([c for c in df.columns])))
-Flattening Nested JSON
+
+-- Flattening Nested JSON
 from pyspark.sql.functions import from_json, col
 from pyspark.sql.types import StructType, StructField, StringType, IntegerType
 
@@ -1102,8 +1148,10 @@ df = (df
     .withColumn("pincode", col("parsed.address.pincode"))
     .drop("parsed")
 )
-Running SQL Queries
-With Temp View
+
+*** Running SQL Queries ***
+
+-- With Temp View
 # Create a temporary SQL table from a DataFrame
 df.createOrReplaceTempView("employees")
 
@@ -1134,7 +1182,8 @@ df_sql = spark.sql("""
     END AS salary_category
     FROM employees
 """)
-Without Temp View
+
+-- Without Temp View
 # Load any dataframe
 df = spark.read.format('csv').option('header', 'true').load('/samples/customers.csv')
 # Use Spark SQL with a variable and pass the dataframe
