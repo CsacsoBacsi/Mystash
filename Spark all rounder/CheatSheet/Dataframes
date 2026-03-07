@@ -48,3 +48,103 @@ data = [
 df = spark.createDataFrame(data)
 df.show()
 
+-- Create from RDD
+# Creates Empty RDD
+emptyRDD = spark.sparkContext.emptyRDD ()
+print (emptyRDD)
+
+schema = StructType([
+  StructField('firstname', StringType(), True),
+  StructField('middlename', StringType(), True),
+  StructField('lastname', StringType(), True)
+  ])
+# Create empty DataFrame from empty RDD
+df = spark.createDataFrame(emptyRDD,schema)
+df.printSchema ()
+
+# Convert empty RDD to Dataframe
+df1 = emptyRDD.toDF (schema)
+df1.printSchema ()
+
+# Create empty DataFrame directly.
+df2 = spark.createDataFrame ([], schema)
+df2.printSchema ()
+
+# Create DataFrame from RDD
+dept = [("Finance",10),("Marketing",20),("Sales",30),("IT",40)]
+rdd = spark.sparkContext.parallelize (dept)
+df = rdd.toDF ()
+df.printSchema ()
+df.show (truncate = False)
+# Create DataFrame from RDD with column names
+deptColumns = ["dept_name","dept_id"]
+df2 = rdd.toDF (deptColumns)
+df2.printSchema ()
+df2.show (truncate = False)
+
+deptDF = spark.createDataFrame(rdd, schema = deptColumns)
+deptDF.printSchema()
+deptDF.show(truncate = False)
+
+deptSchema = StructType([       
+    StructField('dept_name', StringType(), True),
+    StructField('dept_id', StringType(), True)
+])
+
+deptDF1 = spark.createDataFrame (rdd, schema = deptSchema)
+deptDF1.printSchema ()
+deptDF1.show (truncate = False)
+
+-- Nested columns
+# Create DataFrame with nested columns
+data = [
+        (("James",None,"Smith"),"OH","M"),
+        (("Anna","Rose",""),"NY","F"),
+        (("Julia","","Williams"),"OH","F"),
+        (("Maria","Anne","Jones"),"NY","M"),
+        (("Jen","Mary","Brown"),"NY","M"),
+        (("Mike","Mary","Williams"),"OH","M")
+        ]
+
+from pyspark.sql.types import StructType,StructField, StringType        
+schema = StructType([
+    StructField('name', StructType([
+         StructField('firstname', StringType(), True),
+         StructField('middlename', StringType(), True),
+         StructField('lastname', StringType(), True)
+         ])),
+     StructField('state', StringType(), True),
+     StructField('gender', StringType(), True)
+     ])
+df2 = spark.createDataFrame (data = data, schema = schema)
+df2.printSchema ()
+df2.show (truncate = False) # shows all columns
+
+# Select struct column
+df2.select ("name").show (truncate = False)
+# Select struct child columns
+df2.select("name.firstname","name.lastname").show (truncate = False)
+# Select all child columns
+df2.select ("name.*").show (truncate = False)
+
+# Collect () is an action. Returns rows in a Python list. Small set, memory intensive
+# Select () is a transformation. Returns new DF
+dept = [("Finance",10), \
+    ("Marketing",20), \
+    ("Sales",30), \
+    ("IT",40) \
+  ]
+deptColumns = ["dept_name","dept_id"]
+deptDF = spark.createDataFrame (data = dept, schema = deptColumns)
+deptDF.printSchema ()
+deptDF.show (truncate = False)
+
+dataCollect = deptDF.collect ()
+
+print (dataCollect)
+
+dataCollect2 = deptDF.select ("dept_name").collect ()
+print (dataCollect2)
+
+for row in dataCollect:
+    print(row['dept_name'] + "," + str(row['dept_id']))

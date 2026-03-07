@@ -17,7 +17,7 @@ schema = StructType([
   StructField('middlename', StringType(), True),
   StructField('lastname', StringType(), True)
   ])
-# Create empty DataFrame fr om empty RDD
+# Create empty DataFrame from empty RDD
 df = spark.createDataFrame(emptyRDD,schema)
 df.printSchema ()
 
