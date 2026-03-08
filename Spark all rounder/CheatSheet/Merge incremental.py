@@ -1,6 +1,6 @@
 from pyspark.sql import SparkSession
 from delta.pip_utils import configure_spark_with_delta_pip
-from pyspark.sql.types import StructType, StructField, StringType, IntegerType, DateType
+from pyspark.sql.types import StructType, StructField, StringType, IntegerType, DateType, TimestampType
 from datetime import date
 from delta.tables import DeltaTable
 from pyspark.sql.functions import lit
@@ -16,21 +16,27 @@ spark.sparkContext.setLogLevel("OFF")
 
 # Define source schema
 schema = StructType([
- StructField("col1", StringType(), True), 
- StructField("col2", StringType(), True),
- StructField("col3", StringType(), True),
- StructField("val", IntegerType(), True),
+ StructField("key1", StringType(), True), 
+ StructField("key2", StringType(), True),
+ StructField("key3", StringType(), True),
+ StructField("val1", IntegerType(), True),
+ StructField("updated_at", TimestampType(), True),
  StructField("act", StringType(), True)
 ])
 # Define source data
-df_data =[('1','1','1',3,"Update val to 3"),
-          ('2','1','1',2,"Update val to 2"),
-          ('3','1','1',1,"No change"),
-          ('4','1','1',1,"No change"),
-          ('6','1','1',1,"New row, 5 deleted"),
-          ('7','1','1',1,"Duplicate, ignored"),
-          ('7','1','1',1,"Duplicate, ignored")
-]
+df_data =[('1','1','1',3,datetime.strptime("2026-01-03 23:12:12", '%Y-%m-%d %H:%M:%S'),"Update val to 3"),
+          ('1','1','1',4,datetime.strptime("2026-01-04 23:12:12", '%Y-%m-%d %H:%M:%S'),"Update val to 4"),
+          ('1','1','1',3,datetime.strptime("2026-01-05 23:12:12", '%Y-%m-%d %H:%M:%S'),"Update val to 3 again"),
+          ('2','1','1',2,datetime.strptime("2026-01-02 12:12:12", '%Y-%m-%d %H:%M:%S'),"Update val to 2"),
+          #('3','1','1',1,datetime.strptime("2026-01-03 12:12:12", '%Y-%m-%d %H:%M:%S'),"No change"),
+          #('4','1','1',1,datetime.strptime("2026-01-01 12:12:12", '%Y-%m-%d %H:%M:%S'),"No change"),
+          #('5','1','1',1,datetime.strptime("2026-01-01 12:12:12", '%Y-%m-%d %H:%M:%S'),"No change"),
+          ('6','1','1',1,datetime.strptime("2026-01-01 23:12:12", '%Y-%m-%d %H:%M:%S'),"New row"),
+          ('7','1','1',1,datetime.strptime("2026-01-01 12:12:12", '%Y-%m-%d %H:%M:%S'),"Duplicate, ignored"),
+          ('7','1','1',1,datetime.strptime("2026-01-01 12:12:12", '%Y-%m-%d %H:%M:%S'),"Duplicate, ignored"),
+          #('8','1','1',1,datetime.strptime("2026-01-01 12:12:12", '%Y-%m-%d %H:%M:%S'),"No change"),
+          ('9','1','1',1,datetime.strptime("2026-01-01 12:12:12", '%Y-%m-%d %H:%M:%S'),"Two new inserts"),
+          ('9','1','1',2,datetime.strptime("2026-01-02 12:12:12", '%Y-%m-%d %H:%M:%S'),"Two new inserts")]
 
 sourceDF = spark.createDataFrame (df_data, schema=schema) # Create source dataframe
 sourceDF = sourceDF.withColumns ({"ind1": lit(1), "ind2": lit(None)})
