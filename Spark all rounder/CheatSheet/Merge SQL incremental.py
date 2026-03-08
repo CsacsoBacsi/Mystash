@@ -12,7 +12,7 @@ Last 3 timestamp columns are: updated_at, start_date, end_date
 1. val1 has been updated to 2. End date the current record and insert a new record with the updated value and new start date.
    Target: ('2', '1', '1', 1, 2026-01-01 12:12:12, 2026-01-01 12:12:12, None)
    Source: ('2', '1', '1', 2, 2026-01-02 12:12:12)
-   Result: ('2', '1', '1', 1, 2026-01-01 12:12:12, 2026-01-01 12:12:12, 2026-01-02 12:12:12),
+   Result: ('2', '1', '1', 1, 2026-01-01 12:12:12, 2026-01-01 12:12:12, 2026-01-02 12:12:11),
            ('2', '1', '1', 2, 2026-01-02 12:12:12, 2026-01-02 12:12:12, None)
 
 2. val1 has been updated multiple times. First to 3 then to 4 then back to 3. End date the current record and insert the new records with the updated values and new start dates
@@ -238,41 +238,41 @@ exit (0)
     WITH ua AS (
         SELECT key1, key2, key3, val1, updated_at,
                1 AS ind1,
-               NULL AS ind2                                                             # Present in source
+               NULL AS ind2                                                             -- Present in source
         FROM   {source_table} 
         UNION ALL 
         SELECT key1, key2, key3, val1, updated_at,
                NULL AS ind1,
-               1 AS ind2                                                                # Present in target
+               1 AS ind2                                                                -- Present in target
         FROM   {target_table} 
-        WHERE  end_date IS NULL                                                         # Current rows only (no end date)
+        WHERE  end_date IS NULL                                                         -- Current rows only (no end date)
     ),
     cnt AS (
         SELECT key1, key2, key3, val1, updated_at,
-               COUNT (ind1) OVER (PARTITION BY key1, key2, key3, val1) AS cnt_ind1,     # Without updated_at. Mark where row exists (source, target, both)
+               COUNT (ind1) OVER (PARTITION BY key1, key2, key3, val1) AS cnt_ind1,     -- Without updated_at. Mark where row exists (source, target, both)
                COUNT (ind2) OVER (PARTITION BY key1, key2, key3, val1 AS cnt_ind2
         FROM   ua
     )
     SELECT key1, key2, key3, val1, updated_at,
-           CASE WHEN cnt_ind1 > 0 AND cnt_ind2 = 0                                      # Single or multiple rows exist in source
+           CASE WHEN cnt_ind1 > 0 AND cnt_ind2 = 0                                      -- Single or multiple rows exist in source
                 THEN 'I'
-                WHEN cnt_ind1 = 0 AND cnt_ind2 = 1                                      # Row exists in target only (no change)
+                WHEN cnt_ind1 = 0 AND cnt_ind2 = 1                                      -- Row exists in target only (no change)
                 THEN 'U'
-                ELSE '-'                                                                # Same row exists in both source and target or duplicates exist in source
+                ELSE '-'                                                                -- Same row exists in both source and target or duplicates exist in source
            END AS transaction_type,
            updated_at AS start_date,
            LEAD ({sort_col} - interval '1' second) OVER (PARTITION BY key1, key2, key3 ORDER BY {sort_col}) AS end_date, # Set start/end date order for multiple rows in source
-           COUNT (*) OVER (PARTITION BY key1, key2, key3 AS row_cnt,                    # Count rows under this key. End date row only if there exist at least one source row
-           COUNT (*) OVER (PARTITION BY key1, key2, key3, val1, updated_at AS dupe_cnt  # Insert new rows only if they are not dupes
+           COUNT (*) OVER (PARTITION BY key1, key2, key3 AS row_cnt,                    -- Count rows under this key. End date row only if there exist at least one source row
+           COUNT (*) OVER (PARTITION BY key1, key2, key3, val1, updated_at AS dupe_cnt  -- Insert new rows only if they are not dupes
     FROM   cnt
-    WHERE  cnt_ind1 != cnt_ind2) AS src                                                 # If counts are equal, there is no change
+    WHERE  cnt_ind1 != cnt_ind2) AS src                                                 -- If counts are equal, there is no change
     ON     {merge_on}
            AND src.transaction_type = 'U' 
-    WHEN MATCHED AND trg.end_date IS NULL                                               # End date only if a replacing row exists in source
-           THEN UPDATE SET end_date = CASE WHEN src.row_cnt > 1                         # There is at least one source row besides the target row (row_cnt > 1)
+    WHEN MATCHED AND trg.end_date IS NULL                                               -- End date only if a replacing row exists in source
+           THEN UPDATE SET end_date = CASE WHEN src.row_cnt > 1                         -- There is at least one source row besides the target row (row_cnt > 1)
                                            THEN src.end_date
                                       END
-    WHEN NOT MATCHED AND transaction_type = 'I' AND src.dupe_cnt = 1                    # Insert only if the source row is not a duplicate
+    WHEN NOT MATCHED AND transaction_type = 'I' AND src.dupe_cnt = 1                    -- Insert only if the source row is not a duplicate
            THEN INSERT (key1, key2, key3, val1, updated_at, start_date, end_date) 
                 VALUES (src.key1, src.key2, src.key3, src.val1, src.updated_at, src.start_date, src.end_date) 
     ;

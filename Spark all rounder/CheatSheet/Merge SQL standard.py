@@ -1,3 +1,64 @@
+'''
+Full MERGE example in Delta Lake with Spark SQL. This code demonstrates how to perform a full merge from a source Delta table to a target Delta table, 
+handling inserts and updates based on the presence of records in the source and target tables.
+
+Source data can include multiple updates for the same key, new rows, and duplicates. The merge logic identifies whether a row should be end dated (closed).
+If the row does not exist in the source that means it has been deleted, and the current record will be end dated with the current timestamp. This is the
+the difference between full and incremental merge. In an incremental merge, if the row does not exist in the source, it will be ignored, no update is needed.
+If the row exists in the source but not in the target, it will be inserted as a new record.
+
+Example cases:
+Key columns: key1, key2, key3
+Non-key column: val1
+Last 3 timestamp columns are: updated_at, start_date, end_date
+1. val1 has been updated to 2. End date the current record and insert a new record with the updated value and new start date.
+   Target: ('2', '1', '1', 1, 2026-01-01 12:12:12, 2026-01-01 12:12:12, None)
+   Source: ('2', '1', '1', 2, 2026-01-02 12:12:12)
+   Result: ('2', '1', '1', 1, 2026-01-01 12:12:12, 2026-01-01 12:12:12, 2026-01-02 12:12:11),
+           ('2', '1', '1', 2, 2026-01-02 12:12:12, 2026-01-02 12:12:12, None)
+
+2. val1 has been updated multiple times. First to 3 then to 4 then back to 3. End date the current record and insert the new records with the updated values and new start dates
+    Target: ('1', '1', '1', 1, 2026-01-01 12:12:12, 2026-01-01 12:12:12, 2026-01-02 22:12:11),
+            ('1', '1', '1', 2, 2026-01-02 22:12:12, 2026-01-02 22:12:12, None),
+    Source: ('1', '1', '1', 3, 2026-01-03 23:12:12),
+            ('1', '1', '1', 4, 2026-01-04 23:12:12),
+            ('1', '1', '1', 3, 2026-01-05 23:12:12)
+    Result: ('1', '1', '1', 1, 2026-01-01 12:12:12, 2026-01-01 12:12:12, 2026-01-02 22:12:11),
+            ('1', '1', '1', 2, 2026-01-02 22:12:12, 2026-01-02 22:12:12, 2026-01-03 23:12:11),
+            ('1', '1', '1', 3, 2026-01-03 23:12:12, 2026-01-03 23:12:12, 2026-01-04 23:12:11),
+            ('1', '1', '1', 4, 2026-01-04 23:12:12, 2026-01-04 23:12:12, 2026-01-05 23:12:11),
+            ('1', '1', '1', 3, 2026-01-05 23:12:12, 2026-01-05 23:12:12, None)
+
+3. Single new row for a key. Insert the new row
+   Target: -
+   Source: ('6', '1', '1', 1, 2026-01-01 23:12:12)
+   Result: ('6', '1', '1', 1, 2026-01-01 23:12:12, 2026-01-01 23:12:12, None)
+
+4. Two new rows for the same key. Insert both rows with the earlier one being end dated by the later one
+   Target: -
+   Source: ('9', '1', '1', 1, 2026-01-01 12:12:12),
+           ('9', '1', '1', 2, 2026-01-02 12:12:12)
+   Result: ('9', '1', '1', 1, 2026-01-01 12:12:12, 2026-01-01 12:12:12, 2026-01-02 12:12:11),
+           ('9', '1', '1', 2, 2026-01-02 12:12:12, 2026-01-02 12:12:12, None)
+
+5. Source set has no change for a key. No update or insert is needed
+   Target: ('3', '1', '1', 1, 2026-01-01 12:12:12, 2026-01-01 12:12:12, None),
+           ('4', '1', '1', 1, 2026-01-01 12:12:12, 2026-01-01 12:12:12, None)
+   Result: No change for these keys
+
+6. Row is not in the source set but is in the target set. End date the current record. Row 'deleted'
+   Target: ('5', '1', '1', 1, 2026-01-01 12:12:12, 2026-01-01 12:12:12, None)
+           ('8', '1', '1', 1, 2026-01-01 12:12:12, 2026-01-01 12:12:12, None)
+   Source: -
+   Result: ('5', '1', '1', 1, 2026-01-01 12:12:12, 2026-01-01 12:12:12, 2026-03-08 18:19:11), # Current timestamp at the time of running the merge
+           ('8', '1', '1', 1, 2026-01-01 12:12:12, 2026-01-01 12:12:12, 2026-03-08 18:19:11)  # Current timestamp at the time of running the merge
+
+7. Source set has duplicate rows for a given key. These rows should be ignored, no update or insert is needed
+   Source: ('7', '1', '1', 1, 2026-01-01 12:12:12),
+           ('7', '1', '1', 2, 2026-01-01 12:12:12)
+   Result: -
+'''
+
 from pyspark.sql import SparkSession
 from delta.pip_utils import configure_spark_with_delta_pip
 from pyspark.sql.types import StructType, StructField, StringType, IntegerType, DateType, TimestampType
@@ -174,3 +235,53 @@ merge (source_table, target_table, all_cols, partition_by_cols, primary_key, sor
 df = spark.read.format("delta").load(str(Path(delta_path) / target_delta_table))
 print("Updated target dataframe:")
 df.orderBy(["key1", "start_date"], ascending=[1, 1]).show()
+
+exit (0)
+
+'''
+    MERGE INTO {target_table} AS trg
+    USING (
+    WITH ua AS (
+        SELECT key1, key2, key3, val1, updated_at,
+               1 AS ind1,
+               NULL AS ind2                                                             -- Present in source
+        FROM   {source_table} 
+        UNION ALL 
+        SELECT key1, key2, key3, val1, updated_at,
+               NULL AS ind1,
+               1 AS ind2                                                                -- Present in target
+        FROM   {target_table} 
+        WHERE  end_date IS NULL                                                         -- Current rows only (no end date)
+    ),
+    cnt AS (
+        SELECT key1, key2, key3, val1, updated_at,
+               COUNT (ind1) OVER (PARTITION BY key1, key2, key3, val1) AS cnt_ind1,     -- Without updated_at. Mark where row exists (source, target, both)
+               COUNT (ind2) OVER (PARTITION BY key1, key2, key3, val1 AS cnt_ind2
+        FROM   ua
+    )
+    SELECT key1, key2, key3, val1, updated_at,
+           CASE WHEN cnt_ind1 > 0 AND cnt_ind2 = 0                                      -- Single or multiple rows exist in source
+                THEN 'I'
+                WHEN cnt_ind1 = 0 AND cnt_ind2 = 1                                      -- Row exists in target only (no change)
+                THEN 'U'
+                ELSE '-'                                                                -- Same row exists in both source and target or duplicates exist in source
+           END AS transaction_type,
+           updated_at AS start_date,
+           LEAD ({sort_col} - interval '1' second) OVER (PARTITION BY key1, key2, key3 ORDER BY {sort_col}) AS end_date, # Set start/end date order for multiple rows in source
+           COUNT (*) OVER (PARTITION BY key1, key2, key3 AS row_cnt,                    -- Count rows under this key. End date row only if there exist at least one source row
+           COUNT (*) OVER (PARTITION BY key1, key2, key3, val1, updated_at AS dupe_cnt  -- Insert new rows only if they are not dupes
+    FROM   cnt
+    WHERE  cnt_ind1 != cnt_ind2) AS src                                                 -- If counts are equal, there is no change
+    ON     {merge_on}
+           AND src.transaction_type = 'U' 
+    WHEN MATCHED AND trg.end_date IS NULL                                               -- End date only if a replacing row exists in source
+           THEN UPDATE SET end_date = CASE WHEN src.row_cnt = 1                         -- If only the target row is present for this key, end date with current timestamp
+                                           THEN DATE_TRUNC ('second', current_timestamp)-- This code segment is the only difference between full and incremental merge 
+                                           ELSE src.end_date                            -- If multiple rows exist in source, use the end date from the source (the next start date - 1 second)
+                                      END
+    WHEN NOT MATCHED AND transaction_type = 'I' AND src.dupe_cnt = 1                    -- Insert only if the source row is not a duplicate
+           THEN INSERT (key1, key2, key3, val1, updated_at, start_date, end_date) 
+                VALUES (src.key1, src.key2, src.key3, src.val1, src.updated_at, src.start_date, src.end_date)
+    ;
+
+'''
