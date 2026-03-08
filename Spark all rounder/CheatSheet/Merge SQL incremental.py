@@ -1,3 +1,57 @@
+'''
+Incremental MERGE example in Delta Lake with Spark SQL. This code demonstrates how to perform an incremental merge from a source Delta table to a target Delta table, 
+handling inserts and updates based on the presence of records in the source and target tables.
+
+Source data can include multiple updates for the same key, new rows, and duplicates. The merge logic identifies whether a row should be end dated (closed).
+Incremental means that we only want to update the target table with the latest changes from the source, without affecting unchanged records.
+
+Example cases:
+Key columns: key1, key2, key3
+Non-key column: val1
+Last 3 timestamp columns are: updated_at, start_date, end_date
+1. val1 has been updated to 2. End date the current record and insert a new record with the updated value and new start date.
+   Target: ('2', '1', '1', 1, 2026-01-01 12:12:12, 2026-01-01 12:12:12, None)
+   Source: ('2', '1', '1', 2, 2026-01-02 12:12:12)
+   Result: ('2', '1', '1', 1, 2026-01-01 12:12:12, 2026-01-01 12:12:12, 2026-01-02 12:12:12),
+           ('2', '1', '1', 2, 2026-01-02 12:12:12, 2026-01-02 12:12:12, None)
+
+2. val1 has been updated multiple times. First to 3 then to 4 then back to 3. End date the current record and insert the new records with the updated values and new start dates
+    Target: ('1', '1', '1', 1, 2026-01-01 12:12:12, 2026-01-01 12:12:12, 2026-01-02 22:12:11),
+            ('1', '1', '1', 2, 2026-01-02 22:12:12, 2026-01-02 22:12:12, None),
+    Source: ('1', '1', '1', 3, 2026-01-03 23:12:12),
+            ('1', '1', '1', 4, 2026-01-04 23:12:12),
+            ('1', '1', '1', 3, 2026-01-05 23:12:12)
+    Result: ('1', '1', '1', 1, 2026-01-01 12:12:12, 2026-01-01 12:12:12, 2026-01-02 22:12:11),
+            ('1', '1', '1', 2, 2026-01-02 22:12:12, 2026-01-02 22:12:12, 2026-01-03 23:12:11),
+            ('1', '1', '1', 3, 2026-01-03 23:12:12, 2026-01-03 23:12:12, 2026-01-04 23:12:11),
+            ('1', '1', '1', 4, 2026-01-04 23:12:12, 2026-01-04 23:12:12, 2026-01-05 23:12:11),
+            ('1', '1', '1', 3, 2026-01-05 23:12:12, 2026-01-05 23:12:12, None)
+
+4. Single new row for a key. Insert the new row
+   Target: -
+   Source: ('6', '1', '1', 1, 2026-01-01 23:12:12)
+   Result: ('6', '1', '1', 1, 2026-01-01 23:12:12, 2026-01-01 23:12:12, None)
+
+5. Two new rows for the same key. Insert both rows with the earlier one being end dated by the later one
+   Target: -
+   Source: ('9', '1', '1', 1, 2026-01-01 12:12:12),
+           ('9', '1', '1', 2, 2026-01-02 12:12:12)
+   Result: ('9', '1', '1', 1, 2026-01-01 12:12:12, 2026-01-01 12:12:12, 2026-01-02 12:12:11),
+           ('9', '1', '1', 2, 2026-01-02 12:12:12, 2026-01-02 12:12:12, None)
+
+3. Source set has no change for a key. No update or insert is needed
+   Target: ('3', '1', '1', 1, 2026-01-01 12:12:12, 2026-01-01 12:12:12, None),
+           ('4', '1', '1', 1, 2026-01-01 12:12:12, 2026-01-01 12:12:12, None),
+           ('5', '1', '1', 1, 2026-01-01 12:12:12, 2026-01-01 12:12:12, None),
+           ('8', '1', '1', 1, 2026-01-01 12:12:12, 2026-01-01 12:12:12, None)
+   Result: No change for these keys
+
+4. Source set has duplicate rows for a given key. These rows should be ignored, no update or insert is needed
+   Source: ('7', '1', '1', 1, 2026-01-01 12:12:12),
+           ('7', '1', '1', 2, 2026-01-01 12:12:12)
+   Result: -
+'''
+
 from pyspark.sql import SparkSession
 from delta.pip_utils import configure_spark_with_delta_pip
 from pyspark.sql.types import StructType, StructField, StringType, IntegerType, DateType, TimestampType
@@ -11,7 +65,7 @@ builder = SparkSession.builder.appName("MyApp") \
 spark = configure_spark_with_delta_pip(builder).getOrCreate()
 spark.sparkContext.setLogLevel("OFF")
 
-delta_path = "D:/Data/DeltLake"
+delta_path = "D:/Data/delta-lake/merge-incremental"
 source_delta_table = "source_table"
 target_delta_table = "target_table"
 
@@ -29,11 +83,13 @@ df_data =[('1','1','1',3,datetime.strptime("2026-01-03 23:12:12", '%Y-%m-%d %H:%
           ('1','1','1',4,datetime.strptime("2026-01-04 23:12:12", '%Y-%m-%d %H:%M:%S'),"Update val to 4"),
           ('1','1','1',3,datetime.strptime("2026-01-05 23:12:12", '%Y-%m-%d %H:%M:%S'),"Update val to 3 again"),
           ('2','1','1',2,datetime.strptime("2026-01-02 12:12:12", '%Y-%m-%d %H:%M:%S'),"Update val to 2"),
-          ('3','1','1',1,datetime.strptime("2026-01-03 12:12:12", '%Y-%m-%d %H:%M:%S'),"No change"),
-          ('4','1','1',1,datetime.strptime("2026-01-01 12:12:12", '%Y-%m-%d %H:%M:%S'),"No change"),
-          ('6','1','1',1,datetime.strptime("2026-01-01 23:12:12", '%Y-%m-%d %H:%M:%S'),"New row, 5 deleted"),
-          ('7','1','1',1,datetime.strptime("2026-01-01 12:12:12", '%Y-%m-%d %H:%M:%S'),"Duplicate, ignored"), # Multiple source rows can not update a single target row!
+          #('3','1','1',1,datetime.strptime("2026-01-03 12:12:12", '%Y-%m-%d %H:%M:%S'),"No change"),
+          #('4','1','1',1,datetime.strptime("2026-01-01 12:12:12", '%Y-%m-%d %H:%M:%S'),"No change"),
+          #('5','1','1',1,datetime.strptime("2026-01-01 12:12:12", '%Y-%m-%d %H:%M:%S'),"No change"),
+          ('6','1','1',1,datetime.strptime("2026-01-01 23:12:12", '%Y-%m-%d %H:%M:%S'),"New row"),
           ('7','1','1',1,datetime.strptime("2026-01-01 12:12:12", '%Y-%m-%d %H:%M:%S'),"Duplicate, ignored"),
+          ('7','1','1',1,datetime.strptime("2026-01-01 12:12:12", '%Y-%m-%d %H:%M:%S'),"Duplicate, ignored"),
+          #('8','1','1',1,datetime.strptime("2026-01-01 12:12:12", '%Y-%m-%d %H:%M:%S'),"No change"),
           ('9','1','1',1,datetime.strptime("2026-01-01 12:12:12", '%Y-%m-%d %H:%M:%S'),"Two new inserts"),
           ('9','1','1',2,datetime.strptime("2026-01-02 12:12:12", '%Y-%m-%d %H:%M:%S'),"Two new inserts")]
 
@@ -148,9 +204,8 @@ def merge (source_table: str, target_table: str, all_cols: list[str], partition_
     ON     {merge_on}
            AND src.transaction_type = 'U' 
     WHEN MATCHED AND trg.end_date IS NULL 
-           THEN UPDATE SET end_date = CASE WHEN src.row_cnt = 1 
-                                           THEN DATE_TRUNC ('second', current_timestamp) 
-                                           ELSE src.end_date
+           THEN UPDATE SET end_date = CASE WHEN src.row_cnt > 1 
+                                           THEN src.end_date
                                       END
     WHEN NOT MATCHED AND transaction_type = 'I' AND src.dupe_cnt = 1
            THEN INSERT ({select_cols}, start_date, end_date) 
