@@ -78,4 +78,36 @@ print (Student.is_full_name ('Scott Robinson')) # No need for instance. True sta
 
 # --------------------------------------------------------------------
 
+# Decorator parameters
+from datetime import datetime
+
+class SelfParam:
+    this_instance = None
+
+    def __init__(self, run_id, oe_id, reporting_month):
+        SelfParam.this_instance = self
+        self.run_id = run_id
+        self.oe_id = oe_id
+        self.reporting_month = reporting_month
+
+# With decoration, we can log the start and end of the task without modifying the task code itself
+def task_logging(pipeline_tech_name, pipeline_business_name, activity_id, activity_name):
+    def logging_decorator(func):
+        def wrapper(*args, **kwargs):
+            start_time=datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            run_id = SelfParam.this_instance.run_id
+            oe_id = SelfParam.this_instance.oe_id
+            reporting_month = SelfParam.this_instance.reporting_month
+
+            TaskLog(run_id, oe_id, reporting_month, start_time, str (None),
+                   pipeline_tech_name, pipeline_business_name, activity_id, activity_name, 'started').log()
+
+            retval = func(SelfParam.this_instance, **kwargs)  # The original function is called here. The run () method of each task will be executed.
+
+            TaskLog(run_id, oe_id, reporting_month, start_time, datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                   pipeline_tech_name, pipeline_business_name, activity_id, activity_name, 'completed').log()
+            return retval
+        return wrapper
+    return logging_decorator
+
 os.system ("pause")
