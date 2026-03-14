@@ -1,0 +1,45 @@
+query = f"""
+    MERGE INTO {target_table} AS trg
+    USING (
+    WITH ua AS (
+        SELECT {select_cols}, process_date,
+               1 AS ind1,
+               NULL AS ind2
+        FROM   {source_table} 
+        UNION ALL 
+        SELECT {select_cols}, process_date,
+               NULL AS ind1,
+               1 AS ind2
+        FROM   {target_table} 
+        WHERE  end_date = to_timestamp_ntz ("2999-12-31 23:59:59")
+    ),
+    cnt AS (
+        SELECT {select_cols}, process_date,
+               COUNT (ind1) OVER (PARTITION BY {part_by_cols}) AS cnt_ind1,
+               COUNT (ind2) OVER (PARTITION BY {part_by_cols}) AS cnt_ind2
+        FROM   ua
+    )
+    SELECT {select_cols}, process_date,
+           CASE WHEN cnt_ind1 > 0 AND cnt_ind2 = 0
+                THEN 'I'
+                WHEN cnt_ind1 = 0 AND cnt_ind2 = 1
+                THEN 'U'
+                ELSE '-'
+           END AS transaction_type,
+           updated_at AS start_date,
+           NVL (LEAD ({sort_col} - interval '1' millisecond) OVER (PARTITION BY {primary_key_cols} ORDER BY {sort_col}), to_timestamp_ntz ("2999-12-31 23:59:59")) AS end_date,
+           LEAD (process_date) OVER (PARTITION BY {primary_key_cols} ORDER BY updated_at) AS updated_on_process_date,
+           COUNT (*) OVER (PARTITION BY {primary_key_cols}) AS row_cnt,
+           COUNT (*) OVER (PARTITION BY {select_cols}) AS dupe_cnt
+    FROM   cnt
+    WHERE  cnt_ind1 != cnt_ind2) AS src
+    ON     {merge_on}
+           AND src.transaction_type = 'U' 
+    WHEN MATCHED AND trg.end_date = to_timestamp_ntz ("2999-12-31 23:59:59") AND src.row_cnt > 1
+           THEN UPDATE SET end_date = src.end_date,
+                           updated_on_process_date = src.updated_on_process_date
+    WHEN NOT MATCHED AND transaction_type = 'I' AND src.dupe_cnt = 1
+           THEN INSERT ({select_cols}, process_date, start_date, end_date, updated_on_process_date) 
+                VALUES ({insert_cols}, src.process_date, src.start_date, src.end_date, src.updated_on_process_date) 
+    ;
+    """
