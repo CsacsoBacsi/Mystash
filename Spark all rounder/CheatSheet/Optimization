@@ -1,0 +1,29 @@
+dt = DeltaTable ("D:/Data/DeltaLake/csaba_target")
+dt.vacuum (dry_run=False)
+dt.optimize.compact ()
+
+print (str (len(dt.files ()))
+dt.optimize.z_order(["country"])
+
+# 1. Partitioning
+df.write.partitionBy("country").parquet("/data/")
+
+# Data Partitioning divides data into separate directories based on the distinct values of a column 
+# (e.g. date, region, country) is stored in directories like /country=USA/, /country=India/
+
+# 2. Bucketing
+df.write.bucketBy(4, "user_id").sortBy("user_id").saveAs("/data/"))
+
+# Data is hashed into fixed-size files (buckets) within partitions. 
+# Bucketing can improve join performance by colocating related data.
+
+# 3. Z-Order (Multi-Dimensional Clustering)
+f.write.format("delta").option("zOrderBy", "lat,lon").save("/data")
+
+# Z-Ordering clusters data within the same file based on specific columns, allowing for efficient data skipping.
+# This works well with columns frequently used in filtering or joining.
+
+# Partition Data: First, partition your table based on key columns like date, region, or year for efficient range scans.
+# Apply Z-Ordering: Next, apply Z-Ordering within the partitions to cluster related data and enhance data skipping, 
+# e.g., partition by year and Z-Order by customer_id.
+
