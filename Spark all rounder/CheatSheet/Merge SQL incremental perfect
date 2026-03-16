@@ -5,41 +5,63 @@ query = f"""
         SELECT {select_cols}, process_date,
                1 AS ind1,
                NULL AS ind2
-        FROM   {source_table} 
-        UNION ALL 
+        FROM   (SELECT {select_cols}, process_date,
+                       ROW_NUMBER() OVER (PARTITION BY {select_cols} ORDER BY {sort_col} DESC) AS rn,
+                       1 AS ind1, -- This row is from source
+                       NULL AS ind2
+                FROM   {source_table})
+        WHERE rn = 1 -- Dedupe. Same updated_at_utc across all process dates if more than one = duplicate
+        UNION ALL -- Union the two sets as same row needed both for update and insert
         SELECT {select_cols}, process_date,
                NULL AS ind1,
-               1 AS ind2
+               1 AS ind2 # This row is from target
         FROM   {target_table} 
-        WHERE  end_date = to_timestamp_ntz ("2999-12-31 23:59:59")
+        WHERE  end_date = to_timestamp_ntz ("2999-12-31 23:59:59") -- Only the latest row in target get updated (end-dated)
     ),
     cnt AS (
-        SELECT {select_cols}, process_date,
-               COUNT (ind1) OVER (PARTITION BY {part_by_cols}) AS cnt_ind1,
+        SELECT {select_cols}, process_date, -- Do counts. Could be 1:0, 0:1 and 1:1
+               COUNT (ind1) OVER (PARTITION BY {part_by_cols}) AS cnt_ind1, -- part_by_cols has no updated_at_utc
                COUNT (ind2) OVER (PARTITION BY {part_by_cols}) AS cnt_ind2
         FROM   ua
     )
     SELECT {select_cols}, process_date,
-           CASE WHEN cnt_ind1 > 0 AND cnt_ind2 = 0
-                THEN 'I'
-                WHEN cnt_ind1 = 0 AND cnt_ind2 = 1
+           CASE WHEN cnt_ind1 > 0 AND cnt_ind2 = 0 -- More than one same source rows but different updated_at_utc (value was X then Y then X again. That is possible
+                THEN 'I' -- In source, not in target. New row, insert
+                WHEN cnt_ind1 = 0 AND cnt_ind2 = 1 -- In target not in source (deleted or no change in incremental merge). Update (end-date)
                 THEN 'U'
-                ELSE '-'
+                ELSE '-' 
            END AS transaction_type,
-           updated_at AS start_date,
-           NVL (LEAD ({sort_col} - interval '1' millisecond) OVER (PARTITION BY {primary_key_cols} ORDER BY {sort_col}), to_timestamp_ntz ("2999-12-31 23:59:59")) AS end_date,
-           LEAD (process_date) OVER (PARTITION BY {primary_key_cols} ORDER BY updated_at) AS updated_on_process_date,
-           COUNT (*) OVER (PARTITION BY {primary_key_cols}) AS row_cnt,
-           COUNT (*) OVER (PARTITION BY {select_cols}) AS dupe_cnt
+           TO_TIMESTAMP (updated_at_utc, "yyyy-MM-dd HH:mm:ss.SSS") AS start_date, -- Use updated_at_utc as start_date
+           NVL (LEAD ({sort_col} - interval '1' millisecond) -- This rows end date = next rows start_date - 1 millisecond. Latest row has high date 
+                     OVER (PARTITION BY {primary_key_cols} ORDER BY {sort_col}), to_timestamp_ntz ("2999-12-31 23:59:59")) AS end_date,
+           LEAD (process_date) -- Keep track under which process_date this row was updated (changed). Helps reverting back
+                     OVER (PARTITION BY {primary_key_cols} ORDER BY {sort_col}) AS updated_on_process_date,
+           COUNT (*) OVER (PARTITION BY {primary_key_cols}) AS row_cnt, -- Count rows in both source and target with this PK
+           COUNT (*) OVER (PARTITION BY {select_cols}) AS dupe_cnt -- Row maybe in both source and target with same updated_at_utc 
     FROM   cnt
-    WHERE  cnt_ind1 != cnt_ind2) AS src
-    ON     {merge_on}
+    WHERE  cnt_ind1 != cnt_ind2) AS src -- There has to be some difference otherwise no change, ignore
+    ON     {merge_on} -- When merge into target has same row as source row (from the target side of the union)
            AND src.transaction_type = 'U' 
-    WHEN MATCHED AND trg.end_date = to_timestamp_ntz ("2999-12-31 23:59:59") AND src.row_cnt > 1
-           THEN UPDATE SET end_date = src.end_date,
-                           updated_on_process_date = src.updated_on_process_date
-    WHEN NOT MATCHED AND transaction_type = 'I' AND src.dupe_cnt = 1
-           THEN INSERT ({select_cols}, process_date, start_date, end_date, updated_on_process_date) 
+    WHEN MATCHED AND trg.end_date = to_timestamp_ntz ("2999-12-31 23:59:59") AND src.row_cnt > 1 -- Update if it is the current row and there is a replacing row as well!
+           THEN UPDATE SET end_date = src.end_date, -- Close (end date) the row
+                           updated_on_process_date = src.updated_on_process_date -- Note which row of which batch (process_date) updated this row
+    WHEN NOT MATCHED AND transaction_type = 'I' AND src.dupe_cnt = 1 -- Do not insert duplicates
+           THEN INSERT ({select_cols}, process_date, start_date, end_date, updated_on_process_date) -- Insert new rows once old rows been closed
                 VALUES ({insert_cols}, src.process_date, src.start_date, src.end_date, src.updated_on_process_date) 
     ;
     """
+
+source_table = "src_tbl"
+target_table = "trg_tbl"
+all_cols = {"global_id":"string", "scope":"string", "reliability":"string", "amount":"double", "unit":"string",
+            "currency":"string", "statement_duration":"string", "statement_to_date":"date", "fiscal_year_end":"date",
+            "updated_at_utc":"string"}
+partition_by_cols = ["global_id", "scope", "reliability", "amount", "unit", "currency", "statement_duration", "statement_to_date", "fiscal_year_end"]
+primary_key = ["global_id", "currency"]
+sort_col = "TO_TIMESTAMP (updated_at_utc, \"yyyy-MM-dd HH:mm:ss.SSS\")"
+
+select_cols = ", ".join ([f"{k}" for k in all_cols.keys()])
+    merge_on = " AND ".join([f"NVL(trg.{k}, {get_null_replacement(k)}) = NVL(src.{k}, {get_null_replacement(k)})" for k in partition_by_cols])
+    part_by_cols = ", ".join ([f"{k}" for k in partition_by_cols])
+    insert_cols = ", ".join ([f"src.{k}" for k in all_cols])
+    primary_key_cols = ", ".join ([f"{k}" for k in primary_key])
