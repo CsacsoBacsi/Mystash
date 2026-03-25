@@ -22,3 +22,26 @@ positional_args = (1, 2, 3, 4)
 keyword_args = { 'arg1': 1, 'arg2': 2, 'arg3': 3 }
 
 my_func1(*positional_args, **keyword_args)
+
+# -------------------------------------------------------------
+# Asterisk
+person = ['Csacsi', 57, 'Data engineer', 'Miskolc']
+name, age, job, city = person # Unpacks person into separate variable
+
+name, *everything_else = person # Unpacks name and puts everything else as a list into everything_else
+*everything_else, city = person # You can have only one asterisk! Number of variables must also match the items in the list!
+
+word = 'Hi!'
+first_letter, second_letter, third_letter = word # Splits the word into letters and assigns each individual letter to a separate variable. Asterisk works here too!
+
+# Underscore
+person = ['Csacsi', 57, 'Data engineer', 'Miskolc']
+name, _, job, _ = person # Skip these values, do not assign them to any variable. You can have multiple underscores
+
+# Combine asterisk and underscore
+person = ['Csacsi', 57, 'Data engineer', 'Miskolc']
+# Instead of: name, *everything_else = person
+name, *_= person # We get name and throwaway the rest
+
+
+
