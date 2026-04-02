@@ -1,0 +1,22 @@
+CREATE TABLE table_name( column_name data_type[constraints], column_name data_type[constraints], ...); 
+from pyspark.sql.types import StructType, StructField, IntegerType, StringType, DecimalType 
+schema = StructType([ StructField("id", IntegerType(), True), StructField("name", StringType(), False), StructField("age", IntegerType(), True), StructField("salary", DecimalType(10,2), True)]) 
+df = spark.createDataFrame([], schema) 
+
+CreateTable withPrimaryKey 
+CREATE TABLE table_name( column_name data_type
+PRIMARY KEY, ...);
+If table already exists:
+ALTER TABLE table_name
+ADD PRIMARY KEY (column_name);
+
+In PySpark or HiveQL, primary key constraints are not enforced directly. However, you can use
+the dropDuplicates() method to remove duplicate rows based on one or more columns. 
+df = df.dropDuplicates(["id"])
+
+CreateTable with AutoIncrementconstraint
+CREATE TABLE table_name(id INT AUTO_INCREMENT, name VARCHAR(255), PRIMARY KEY (id));
+not natively supported by the DataFrame API, but there are several ways to achieve the same
+functionality. 
+from pyspark.sql.functions import monotonically_increasing_id 
+df = df.withColumn("id", monotonically_increasing_id ()+ start_value
